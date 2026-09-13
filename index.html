@@ -2,252 +2,157 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#17324d">
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="GLEN">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#203a5d">
 <title>GLEN</title>
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f3f5f7;color:#17202a}
-header{background:#17324d;color:#fff;padding:18px 16px;position:sticky;top:0;z-index:5}
-header h1{margin:0;font-size:25px}header small{opacity:.8}
-main{max-width:900px;margin:auto;padding:16px}
-.card{background:#fff;border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 2px 9px #0001}
-button{border:0;border-radius:10px;padding:12px 16px;font-size:16px;font-weight:700;cursor:pointer}
-.primary{background:#1769aa;color:white}.secondary{background:#e8edf2;color:#17324d}
-.danger{background:#c62828;color:#fff}.full{width:100%;margin-top:10px}
-input[type=text],input[type=file]{width:100%;padding:12px;border:1px solid #c9ced3;border-radius:9px;font-size:16px}
-label{display:block;font-weight:700;margin:12px 0 6px}
-.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:180px}
-.hidden{display:none}.muted{color:#65717b}.success{padding:10px;border-radius:9px;background:#eaf7ed;color:#246b35;margin-top:10px}
-.item{border:1px solid #ddd;border-radius:11px;padding:13px;margin-top:9px;background:#fff;cursor:pointer}
-.item b{display:block;font-size:17px}.item span{display:block;color:#68737c;margin-top:4px}
-.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left;white-space:nowrap}
-.badge{display:inline-block;padding:4px 8px;border-radius:12px;background:#e8f1fa;color:#175b8f;font-size:12px}
-#drop{border:2px dashed #9aa6b2;border-radius:12px;padding:22px;text-align:center;margin-top:10px}
-.photo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
-.photo-card{position:relative;border:1px solid #ddd;border-radius:10px;overflow:hidden;background:#eee}
-.photo-card img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover}
-.photo-card button{position:absolute;right:6px;top:6px;padding:7px 9px;background:#c62828;color:white;font-size:13px}
-@media(min-width:650px){.photo-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
+header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
+main{max-width:900px;margin:22px auto;padding:0 16px}.card{background:white;border-radius:20px;padding:22px;margin-bottom:18px;box-shadow:0 5px 20px #0000000c}
+h2{margin-top:0}.btn{border:0;border-radius:12px;padding:13px 18px;font-size:16px;font-weight:700;cursor:pointer;background:#2375b9;color:#fff}.btn.secondary{background:#e8eef4;color:#203a5d}.btn.danger{background:#b93838}.btn:disabled{opacity:.5}
+input{width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;font-size:16px;margin:6px 0 12px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.small{color:#66727e}.error{color:#b42318;margin-top:8px}.ok{color:#18794e;margin-top:8px}
+.item{border:1px solid #dce3e9;border-radius:14px;padding:15px;margin:10px 0}.item h3{margin:0 0 5px}.item p{margin:4px 0}
+.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#e9f1f8;color:#203a5d;font-size:13px;font-weight:700}
+.hidden{display:none!important}
+label{font-weight:600}
+hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
+#app{min-height:70vh}
 </style>
 </head>
 <body>
-<header><h1>GLEN</h1><small>Gestion des chantiers et logements</small></header>
-<main>
-
-<section id="home">
-<div class="card">
-<h2>Chantiers</h2>
-<button class="primary full" onclick="newChantier()">＋ Nouveau chantier</button>
-<div id="chantierList"></div>
-</div>
-</section>
-
-<section id="chantierPage" class="hidden">
-<div class="card">
-<button class="secondary" onclick="showHome()">← Retour aux chantiers</button>
-<h2 id="chantierTitle"></h2>
-<p class="muted">Les logements importés ici seront automatiquement rattachés à ce chantier.</p>
-<button class="primary full" onclick="document.getElementById('excel').click()">📥 Importer les logements Excel</button>
-<input id="excel" class="hidden" type="file" accept=".xlsx,.xls,.csv,.txt">
-<div id="importMsg"></div>
-</div>
-<div class="card">
-<h2>Logements</h2>
-<div id="logementList"></div>
-</div>
-</section>
-
-<section id="previewPage" class="hidden">
-<div class="card">
-<button class="secondary" onclick="openChantier()">← Retour</button>
-<h2>Aperçu de l'import</h2>
-<p id="previewInfo" class="muted"></p>
-<div class="tablewrap"><table id="previewTable"></table></div>
-<button class="primary full" onclick="confirmImport()">✅ Valider l'import</button>
-</div>
-</section>
-
-<section id="logementPage" class="hidden">
-<div class="card">
-<button class="secondary" onclick="openChantier()">← Retour au chantier</button>
-<h2 id="logementTitle"></h2>
-<div id="logementDetails"></div>
-<div class="card" style="padding:0;box-shadow:none;margin-top:18px">
-  <h3>📷 Photos du logement</h3>
-  <p class="muted">Prends une photo directement depuis GLEN. Elle sera rattachée automatiquement à ce logement.</p>
-  <input id="cameraLogement" class="hidden" type="file" accept="image/*" capture="environment">
-  <input id="galleryLogement" class="hidden" type="file" accept="image/*" multiple>
-  <button class="primary full" onclick="document.getElementById('cameraLogement').click()">📷 Prendre une photo</button>
-  <button class="secondary full" onclick="document.getElementById('galleryLogement').click()">🖼️ Ajouter une photo existante</button>
-  <p id="photoCount" class="muted"></p>
-  <div id="photoGrid" class="photo-grid"></div>
-</div>
-</div>
-</section>
-
-</main>
-
+<header><h1>GLEN</h1><p>Gestion des chantiers et logements</p></header>
+<main id="app"></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-const KEY="glen_v1_data";
-let db=JSON.parse(localStorage.getItem(KEY)||'{"chantiers":[]}');
-let currentChantier=null,currentPreview=null;
+/* REMPLACER CES DEUX VALEURS PAR CELLES DE TON PROJET SUPABASE */
+const SUPABASE_URL = "https://vmhqbywplgahrxozroit.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KQHZK6sX5B4OHDo7UYHu1Q_iKsKsSf2";
 
-function save(){localStorage.setItem(KEY,JSON.stringify(db))}
-function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
-function hideAll(){document.querySelectorAll("main>section").forEach(x=>x.classList.add("hidden"))}
-function showHome(){hideAll();document.getElementById("home").classList.remove("hidden");renderChantiers()}
-function newChantier(){
- const n=prompt("Nom du chantier :");
- if(!n||!n.trim())return;
- db.chantiers.push({id:Date.now(),nom:n.trim(),logements:[]});save();renderChantiers();
+const app = document.getElementById("app");
+let supabaseClient = null, currentProfile = null;
+
+function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
+function set(msg, cls=""){app.innerHTML=`<div class="card ${cls}">${msg}</div>`;}
+
+function configOK(){
+  return SUPABASE_URL.startsWith("https://") && !SUPABASE_URL.includes("A_REMPLACER") &&
+         SUPABASE_PUBLISHABLE_KEY && !SUPABASE_PUBLISHABLE_KEY.includes("A_REMPLACER");
 }
-function renderChantiers(){
- const el=document.getElementById("chantierList");
- if(!db.chantiers.length){el.innerHTML='<p class="muted">Aucun chantier créé.</p>';return}
- el.innerHTML=db.chantiers.map(c=>`<div class="item" onclick="selectChantier(${c.id})"><b>${esc(c.nom)}</b><span>${c.logements.length} logement(s)</span></div>`).join("");
-}
-function selectChantier(id){currentChantier=db.chantiers.find(c=>c.id===id);openChantier()}
-function openChantier(){
- hideAll();document.getElementById("chantierPage").classList.remove("hidden");
- document.getElementById("chantierTitle").textContent=currentChantier.nom;renderLogements();
-}
-function renderLogements(){
- const el=document.getElementById("logementList");
- if(!currentChantier.logements.length){el.innerHTML='<p class="muted">Aucun logement. Importez votre fichier Excel.</p>';return}
- el.innerHTML=currentChantier.logements.map((l,i)=>`<div class="item" onclick="openLogement(${i})"><b>${l.log? "Logement "+esc(l.log):"Logement"} ${l.nom? "— "+esc(l.nom):""}</b><span>${l.adresse?esc(l.adresse)+" · ":""}${esc(l.bat?"Bât. "+l.bat+" · ":"")}${esc(l.etage||"")} ${l.commune?"· "+esc(l.commune):""}</span></div>`).join("");
-}
-function normalize(s){return String(s??"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/g,"")}
-function parseCSV(text){
- let lines=text.replace(/\r/g,"").split("\n").filter(x=>x.trim());
- let delim=(lines[0].split(";").length>lines[0].split(",").length)?";":",";
- return lines.map(line=>{let out=[],cur="",q=false;for(let i=0;i<line.length;i++){let ch=line[i];if(ch=='"'){if(q&&line[i+1]=='"'){cur+='"';i++}else q=!q}else if(ch==delim&&!q){out.push(cur);cur=""}else cur+=ch}out.push(cur);return out})
-}
-document.getElementById("excel").addEventListener("change",async e=>{
- const f=e.target.files[0]; if(!f)return;
- try{
-  let rows;
-  if(f.name.toLowerCase().endsWith(".csv")||f.name.toLowerCase().endsWith(".txt")){
-    rows=parseCSV(await f.text());
-  }else{
-    // XLSX support uses SheetJS loaded below when internet is available.
-    if(typeof XLSX==="undefined") throw new Error("Pour Excel .xlsx, utilisez le fichier dans la version hébergée de GLEN (bibliothèque Excel intégrée).");
-    const data=await f.arrayBuffer(), wb=XLSX.read(data,{type:"array"});
-    const ws=wb.Sheets[wb.SheetNames[0]];
-    rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+
+async function init(){
+  if(!configOK()){
+    set(`<h2>GLEN V2 — configuration</h2>
+    <p>La base de données n'est pas encore connectée.</p>
+    <p class="small">Après création du projet Supabase, remplace les deux valeurs indiquées dans le fichier index.html.</p>`);
+    return;
   }
-  buildPreview(rows);
- }catch(err){document.getElementById("importMsg").innerHTML='<div class="success" style="background:#fdecec;color:#9b1c1c">'+esc(err.message)+'</div>'}
- e.target.value="";
-});
-function buildPreview(rows){
- if(!rows.length)return;
- const headers=rows[0].map(x=>String(x).trim()), norm=headers.map(normalize);
- const find=(...names)=>{for(const n of names){let i=norm.indexOf(normalize(n));if(i>=0)return i}return -1}
- const idx={
-  nom:find("Nom"),adresse:find("Adresse"),code:find("Code"),commune:find("Commune"),
-  telephone:find("Téléphone","Telephone"),mail:find("Mail"),bat:find("N° Bat","N Bat","N°Bat"),
-  log:find("N° Log","N Log","N°Log"),etage:find("Étage","Etage"),type:find("Type")
- };
- currentPreview=rows.slice(1).filter(r=>r.some(v=>String(v).trim())).map(r=>({
-  nom:val(r,idx.nom),adresse:val(r,idx.adresse),code:val(r,idx.code),commune:val(r,idx.commune),
-  telephone:val(r,idx.telephone),mail:val(r,idx.mail),bat:val(r,idx.bat),log:val(r,idx.log),
-  etage:val(r,idx.etage),type:val(r,idx.type)
- }));
- hideAll();document.getElementById("previewPage").classList.remove("hidden");
- document.getElementById("previewInfo").textContent=`${currentPreview.length} logement(s) trouvé(s) pour le chantier « ${currentChantier.nom} ».`;
- let show=currentPreview.slice(0,80);
- document.getElementById("previewTable").innerHTML="<tr>"+headers.map(h=>"<th>"+esc(h)+"</th>").join("")+"</tr>"+
- show.map(r=>"<tr>"+headers.map((_,i)=>"<td>"+esc(r[Object.keys(r)[i]]||"")+"</td>").join("")+"</tr>").join("");
-}
-function val(r,i){return i>=0?String(r[i]??"").trim():""}
-function confirmImport(){
- if(!currentPreview)return;
- currentChantier.logements.push(...currentPreview);save();currentPreview=null;
- openChantier();
- document.getElementById("importMsg").innerHTML='<div class="success">Import terminé.</div>';
-}
-function openLogement(i){
- currentLogementIndex=i;
- const l=currentChantier.logements[i];hideAll();document.getElementById("logementPage").classList.remove("hidden");
- document.getElementById("logementTitle").textContent="Logement "+(l.log||"");
- const fields=[["Locataire",l.nom],["Adresse",l.adresse],["Code",l.code],["Commune",l.commune],["Téléphone",l.telephone],["Mail",l.mail],["N° bâtiment",l.bat],["N° logement",l.log],["Étage",l.etage],["Type",l.type]];
- document.getElementById("logementDetails").innerHTML=fields.map(x=>`<p><b>${esc(x[0])}</b><br>${esc(x[1]||"—")}</p>`).join("");
- renderPhotos(l);
+  supabaseClient = window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+  const {data:{session}} = await supabaseClient.auth.getSession();
+  if(session) await loadProfile();
+  else loginView();
 }
 
-let currentLogementIndex = null;
-
-async function compressImage(file){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>{
-      const img=new Image();
-      img.onload=()=>{
-        const max=1600;
-        let w=img.width,h=img.height;
-        if(w>max || h>max){
-          const ratio=Math.min(max/w,max/h); w=Math.round(w*ratio); h=Math.round(h*ratio);
-        }
-        const canvas=document.createElement("canvas");
-        canvas.width=w; canvas.height=h;
-        const ctx=canvas.getContext("2d");
-        ctx.drawImage(img,0,0,w,h);
-        resolve(canvas.toDataURL("image/jpeg",0.82));
-      };
-      img.onerror=reject; img.src=reader.result;
-    };
-    reader.onerror=reject; reader.readAsDataURL(file);
+function loginView(){
+  app.innerHTML=`<div class="card">
+    <h2>Connexion</h2>
+    <label>Email</label><input id="email" type="email" autocomplete="username">
+    <label>Mot de passe</label><input id="password" type="password" autocomplete="current-password">
+    <button class="btn" onclick="login()">Se connecter</button>
+    <div id="msg"></div>
+  </div>`;
+}
+async function login(){
+  const msg=document.getElementById("msg");
+  msg.className="";
+  const {error}=await supabaseClient.auth.signInWithPassword({
+    email:document.getElementById("email").value.trim(),
+    password:document.getElementById("password").value
   });
+  if(error){msg.className="error";msg.textContent="Connexion impossible : "+error.message;return;}
+  await loadProfile();
+}
+async function logout(){await supabaseClient.auth.signOut();currentProfile=null;loginView();}
+
+async function loadProfile(){
+  const {data,error}=await supabaseClient.from("profiles").select("*").eq("id",(await supabaseClient.auth.getUser()).data.user.id).single();
+  if(error){set("Profil introuvable. Vérifie que le compte existe dans Supabase et qu'il a bien une ligne dans profiles.","error");return;}
+  currentProfile=data;
+  currentProfile.role==="admin" ? adminHome() : poseurHome();
 }
 
-async function addLogementPhotos(files){
-  if(currentLogementIndex===null || !currentChantier)return;
-  const l=currentChantier.logements[currentLogementIndex];
-  if(!l.photos) l.photos=[];
-  for(const file of files){
-    if(!file.type.startsWith("image/")) continue;
-    try{
-      const data=await compressImage(file);
-      l.photos.push({data, date:new Date().toISOString()});
-    }catch(e){}
-  }
-  save();
-  renderPhotos(l);
+async function adminHome(){
+  const {data:chantiers,error}=await supabaseClient.from("chantiers").select("*").order("created_at",{ascending:false});
+  if(error){set("Erreur : "+esc(error.message),"error");return;}
+  app.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between">
+    <div><span class="badge">ADMINISTRATEUR</span><h2>Mes chantiers</h2></div>
+    <button class="btn secondary" onclick="logout()">Déconnexion</button>
+  </div>
+  <button class="btn" onclick="newChantier()">+ Nouveau chantier</button>
+  <div id="list">${chantiers?.length?chantiers.map(c=>`<div class="item">
+    <h3>${esc(c.nom)}</h3><p class="small">Créé le ${new Date(c.created_at).toLocaleDateString("fr-FR")}</p>
+    <div class="row"><button class="btn" onclick="openChantier('${c.id}')">Ouvrir</button></div>
+  </div>`).join(""):"<p class='small'>Aucun chantier créé.</p>"}</div></div>`;
+}
+async function newChantier(){
+  const nom=prompt("Nom du chantier");
+  if(!nom?.trim()) return;
+  const user=(await supabaseClient.auth.getUser()).data.user;
+  const {error}=await supabaseClient.from("chantiers").insert({nom:nom.trim(),created_by:user.id});
+  if(error){alert(error.message);return;} adminHome();
+}
+async function openChantier(id){
+  const {data:c}=await supabaseClient.from("chantiers").select("*").eq("id",id).single();
+  const {data:l}=await supabaseClient.from("logements").select("*").eq("chantier_id",id).order("created_at");
+  const {data:a}=await supabaseClient.from("chantier_poseurs").select("poseur_id, profiles(id,email,full_name)").eq("chantier_id",id);
+  const {data:p}=await supabaseClient.from("profiles").select("id,email,full_name").eq("role","poseur").order("email");
+  app.innerHTML=`<div class="card">
+    <div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button></div>
+    <h2>${esc(c.nom)}</h2>
+    <h3>Logements</h3>
+    ${l?.length?l.map(x=>`<div class="item"><b>${esc(x.nom||"Logement")}</b><p>${esc(x.adresse||"")}</p></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
+    <hr><h3>Poseurs autorisés sur ce chantier</h3>
+    <select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin-bottom:10px">
+      <option value="">Choisir un poseur</option>${p?.map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}</option>`).join("")}
+    </select>
+    <button class="btn" onclick="assignPoseur('${id}')">Ajouter le poseur</button>
+    <div>${a?.length?a.map(x=>`<div class="item"><b>${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}</b></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div>
+  </div>`;
+}
+async function assignPoseur(chantierId){
+  const poseurId=document.getElementById("poseurSelect").value;
+  if(!poseurId)return;
+  const {error}=await supabaseClient.from("chantier_poseurs").insert({chantier_id:chantierId,poseur_id:poseurId});
+  if(error && error.code!=="23505"){alert(error.message);return;}
+  openChantier(chantierId);
 }
 
-document.getElementById("cameraLogement").addEventListener("change",e=>{
-  addLogementPhotos([...e.target.files]); e.target.value="";
-});
-document.getElementById("galleryLogement").addEventListener("change",e=>{
-  addLogementPhotos([...e.target.files]); e.target.value="";
-});
-
-function renderPhotos(l){
-  const arr=l.photos||[];
-  document.getElementById("photoCount").textContent =
-    arr.length ? `${arr.length} photo${arr.length>1?"s":""} enregistrée${arr.length>1?"s":""}.` : "Aucune photo.";
-  document.getElementById("photoGrid").innerHTML=arr.map((p,i)=>`
-    <div class="photo-card">
-      <img src="${p.data}" alt="Photo ${i+1}">
-      <button onclick="deletePhoto(${i})">Supprimer</button>
-    </div>`).join("");
+async function poseurHome(){
+  const {data:rows,error}=await supabaseClient.from("chantier_poseurs").select("chantier_id,chantiers(id,nom)");
+  if(error){set("Erreur : "+esc(error.message),"error");return;}
+  app.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between">
+    <div><span class="badge">POSEUR</span><h2>Mes chantiers</h2></div>
+    <button class="btn secondary" onclick="logout()">Déconnexion</button>
+  </div>
+  ${rows?.length?rows.map(r=>`<div class="item"><h3>${esc(r.chantiers?.nom)}</h3><button class="btn" onclick="poseurChantier('${r.chantiers?.id}')">Ouvrir</button></div>`).join(""):"<p class='small'>Aucun chantier ne vous a été attribué.</p>"}</div>`;
 }
-function deletePhoto(i){
-  if(!currentChantier || currentLogementIndex===null)return;
-  const l=currentChantier.logements[currentLogementIndex];
-  if(confirm("Supprimer cette photo ?")){
-    l.photos.splice(i,1); save(); renderPhotos(l);
-  }
+async function poseurChantier(id){
+  const {data:c}=await supabaseClient.from("chantiers").select("*").eq("id",id).single();
+  const {data:l,error}=await supabaseClient.from("logements").select("*").eq("chantier_id",id).order("created_at");
+  if(error){set("Erreur : "+esc(error.message),"error");return;}
+  app.innerHTML=`<div class="card"><button class="btn secondary" onclick="poseurHome()">← Retour</button>
+  <h2>${esc(c.nom)}</h2><h3>Logements</h3>
+  ${l?.length?l.map(x=>`<div class="item"><h3>${esc(x.nom||"Logement")}</h3><p>${esc(x.adresse||"")}</p><button class="btn" onclick="openLogement('${x.id}')">Ouvrir</button></div>`).join(""):"<p class='small'>Aucun logement disponible.</p>"}
+  </div>`;
 }
-
-showHome();
+async function openLogement(id){
+  const {data:l}=await supabaseClient.from("logements").select("*").eq("id",id).single();
+  app.innerHTML=`<div class="card"><button class="btn secondary" onclick="poseurChantier('${l.chantier_id}')">← Retour</button>
+  <h2>${esc(l.nom||"Logement")}</h2><p>${esc(l.adresse||"")}</p>
+  <hr><h3>Photos</h3>
+  <p class="small">Le module photo sera activé à l'étape suivante. Ici, on valide d'abord les droits Administrateur / Poseur.</p></div>`;
+}
+init();
 </script>
-<!-- SheetJS pour lecture Excel .xlsx/.xls lorsque GLEN est hébergé -->
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}</script>
 </body>
 </html>
