@@ -22,6 +22,29 @@ hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 .modal-backdrop{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:14px;z-index:1000}.modal{background:#fff;border-radius:18px;max-width:760px;width:100%;padding:18px;box-shadow:0 15px 50px #0005}.sig-wrap{border:2px dashed #9aa8b5;border-radius:12px;background:#fff;touch-action:none}.sig-wrap canvas{width:100%;height:220px;display:block;border-radius:10px;touch-action:none}.sig-note{font-size:13px;color:#66727e;margin:8px 0}.modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
 </style>
 <style>
+.work-checks{margin-top:8px}
+.work-checks h3{font-size:22px}
+.checkbox-field{
+  display:flex!important;
+  align-items:center!important;
+  gap:12px!important;
+  min-height:44px!important;
+  padding:8px 12px!important;
+  margin:5px 0!important;
+  background:#f7f9fb!important;
+  border:1px solid #d6e0ea!important;
+  border-radius:10px!important;
+}
+.checkbox-field input[type="checkbox"]{
+  width:22px!important;
+  height:22px!important;
+  flex:0 0 auto!important;
+  margin:0!important;
+}
+.checkbox-field span{font-weight:600!important}
+</style>
+
+<style>
 .checkbox-field{
   display:flex!important;
   align-items:center!important;
@@ -357,7 +380,7 @@ const FIELD_LABELS={
   "Check Box24":"Avis locataire – Propreté du logement – 1",
   "Check Box26":"Avis locataire – Propreté du logement – 2"
 };
-const HIDDEN_FIXED_FIELDS=new Set(["1","Numéro locataire","Text2","Text3","Text111"]);
+const HIDDEN_FIXED_FIELDS=new Set(["1","Numéro locataire","Text2","Text3","Text111","Numéro de téléphone","DateBox1","Check Box20","Check Box23","Check Box25","Check Box201","Check Box24","Check Box26"]);
 
 let fillPdfId=null, fillLogementId=null, fillDoc=null, fillForm=null;
 async function openFillPdf(pdfId,logementId){
@@ -405,6 +428,11 @@ async function openFillPdf(pdfId,logementId){
       let val=''; try{val=f.getText?.()||'';}catch(e){}
       return `<label class="fill-field"><span>${label}</span><input type="text" data-fill-name="${name}" data-fill-type="text" value="${esc(val)}"></label>`;
     }).join('');
+    const workChecks=document.createElement('div');
+    workChecks.className='work-checks';
+    workChecks.innerHTML=`<h3 style="margin:22px 0 8px">Contrôles et travaux</h3><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box1" data-fill-type="checkbox"><span>Mesure d’isolement</span></label><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box2" data-fill-type="checkbox"><span>Contrôle des dispositifs de protection</span></label><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box9" data-fill-type="checkbox"><span>Remplacement des panneaux solaires</span></label><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box10" data-fill-type="checkbox"><span>Mise en service des équipements solaires</span></label><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box8" data-fill-type="checkbox"><span>Carottage + pose de ventouse</span></label><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box4" data-fill-type="checkbox"><span>Essais de fonctionnement</span></label><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box6" data-fill-type="checkbox"><span>Remplacement de la vidange du ballon</span></label><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box7" data-fill-type="checkbox"><span>Remplacement / pose d’un réducteur de pression</span></label><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box11" data-fill-type="checkbox"><span>Mise en service des caissons</span></label><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box12" data-fill-type="checkbox"><span>Création de trappes de ramonage</span></label><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box13" data-fill-type="checkbox"><span>Ramonage des conduits de liaisons</span></label><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box3" data-fill-type="checkbox"><span>Contrôle de la résistance à la terre</span></label><label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="Check Box14" data-fill-type="checkbox"><span>Ramonage des gaines</span></label>`;
+    wrap.appendChild(workChecks);
+
     document.getElementById('fillMsg').textContent=`${fields.length} champs détectés.`;
   }catch(e){
     const m=document.getElementById('fillMsg'); if(m){m.className='error';m.textContent='Erreur : '+(e?.message||e);}
