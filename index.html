@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#203a5d">
-<title>GLEN V8.7.1</title>
+<title>GLEN V8.8</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
@@ -175,7 +175,7 @@ async function adminHome(){
   </div>
   <div class="progress-stats"><div><b>${(chantiers||[]).length}</b><span>🏗️ Chantiers</span></div><div><b>${totalAll}</b><span>🏠 Logements</span></div><div><b>${doneAll}</b><span>✅ Terminés</span></div><div><b>${todoAll}</b><span>⏳ À faire</span></div></div>
   <div class="item" style="margin-bottom:16px"><div class="row" style="justify-content:space-between"><b>Avancement global</b><b>${pctAll}%</b></div><div style="height:14px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:8px"><div style="height:100%;width:${pctAll}%;background:#16a34a;border-radius:999px"></div></div><p class="small">${doneAll} logement${doneAll>1?'s':''} terminé${doneAll>1?'s':''} sur ${totalAll}</p></div>
-  <button class="btn" onclick="newChantier()">+ Nouveau chantier</button>
+  <div class="row" style="margin-bottom:14px"><button class="btn" onclick="newChantier()">+ Nouveau chantier</button><button class="btn secondary" onclick="managePoseurs()">👷 Gérer les poseurs</button></div>
   <div id="list">${chantiers?.length?chantiers.map(c=>{const s=stats[c.id]||{total:0,done:0};const todo=s.total-s.done;const pct=s.total?Math.round(s.done*100/s.total):0;return `<div class="item">
     <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">${esc(c.nom)}</h3><span class="status-badge ${pct===100&&s.total?'status-done':'status-todo'}">${pct===100&&s.total?'✅ Terminé':'⏳ En cours'}</span></div>
     <p class="small">Créé le ${new Date(c.created_at).toLocaleDateString("fr-FR")}</p>
@@ -184,6 +184,48 @@ async function adminHome(){
     <div class="row"><button class="btn" onclick="openChantier('${c.id}')">Ouvrir le chantier</button></div>
   </div>`;}).join(""):"<p class='small'>Aucun chantier créé.</p>"}</div></div>`;
 }
+async function managePoseurs(){
+  const {data:poseurs,error}=await supabaseClient.from('profiles').select('id,email,full_name,created_at').eq('role','poseur').order('email');
+  if(error){alert(error.message);return;}
+  app.innerHTML=`<div class="card">
+    <div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button></div>
+    <span class="badge">ADMINISTRATEUR</span>
+    <h2>👷 Gestion des poseurs</h2>
+    <p class="small">Crée ici les comptes poseurs. Le compte est confirmé automatiquement et pourra ensuite être affecté à un ou plusieurs chantiers.</p>
+    <div class="item">
+      <h3>➕ Nouveau poseur</h3>
+      <label>Nom / prénom</label><input id="newPoseurName" type="text" placeholder="Ex. Damien Dumas" autocomplete="name">
+      <label>Email</label><input id="newPoseurEmail" type="email" placeholder="poseur@glen.fr" autocomplete="email">
+      <label>Mot de passe provisoire</label><input id="newPoseurPassword" type="password" placeholder="Minimum 8 caractères" autocomplete="new-password">
+      <button class="btn" onclick="createPoseur()">➕ Créer le compte poseur</button>
+      <div id="poseurCreateMsg"></div>
+    </div>
+    <div class="item">
+      <h3>👷 Poseurs existants (${(poseurs||[]).length})</h3>
+      ${(poseurs||[]).length ? (poseurs||[]).map(p=>`<div style="margin-top:10px;padding:12px;border:1px solid #dce3e9;border-radius:12px"><div style="font-weight:700">👷 ${esc(p.full_name||'Poseur')}</div><div class="small">${esc(p.email||'')}</div></div>`).join('') : '<p class="small">Aucun poseur pour le moment.</p>'}
+    </div>
+    <div class="item" style="background:#fff8e6"><b>🔐 Sécurité</b><p class="small">La création du compte passe par une fonction sécurisée Supabase. La clé secrète n'est jamais envoyée au navigateur.</p></div>
+  </div>`;
+}
+
+async function createPoseur(){
+  const msg=document.getElementById('poseurCreateMsg');
+  const full_name=document.getElementById('newPoseurName').value.trim();
+  const email=document.getElementById('newPoseurEmail').value.trim().toLowerCase();
+  const password=document.getElementById('newPoseurPassword').value;
+  if(!email){msg.className='error';msg.textContent='Indique l’email du poseur.';return;}
+  if(password.length<8){msg.className='error';msg.textContent='Le mot de passe provisoire doit contenir au moins 8 caractères.';return;}
+  msg.className='small';msg.textContent='Création du compte…';
+  const {data,error}=await supabaseClient.functions.invoke('create-poseur',{body:{email, password, full_name}});
+  if(error){msg.className='error';msg.textContent='Erreur : '+(error.message||error);return;}
+  if(!data?.ok){msg.className='error';msg.textContent='Erreur : '+(data?.error||'Création impossible.');return;}
+  msg.className='ok';msg.textContent='Poseur créé : '+email;
+  document.getElementById('newPoseurName').value='';
+  document.getElementById('newPoseurEmail').value='';
+  document.getElementById('newPoseurPassword').value='';
+  setTimeout(()=>managePoseurs(),700);
+}
+
 async function newChantier(){
   const nom=prompt("Nom du chantier");
   if(!nom?.trim()) return;
