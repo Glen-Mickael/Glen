@@ -380,16 +380,22 @@ async function openFillPdf(pdfId,logementId){
       if(HIDDEN_FIXED_FIELDS.has(rawName)) return '';
       const name=esc(rawName);
       const label=esc(FIELD_LABELS[rawName]||rawName);
+
+      // Les champs "Nombre X" sont toujours affichés comme menus 1 à 10,
+      // indépendamment de la façon dont pdf-lib identifie le widget.
+      const isQuantity=/^Nombre\s+\d+$/i.test(rawName);
+      if(isQuantity){
+        let current='';
+        try{ current=(f.getSelected?.()[0]||f.getText?.()||''); }catch(e){}
+        const opts=Array.from({length:10},(_,n)=>String(n+1));
+        const selected=opts.includes(current)?current:'';
+        return `<label class="fill-field"><span>${label}</span><select data-fill-name="${name}" data-fill-type="dropdown"><option value="">—</option>${opts.map(o=>`<option value="${o}" ${o===selected?'selected':''}>${o}</option>`).join('')}</select></label>`;
+      }
+
       const type=f.constructor.name;
       if(type==='PDFCheckBox') return `<label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="${name}" data-fill-type="checkbox" ${f.isChecked()?'checked':''}><span>${label}</span></label>`;
-      if(type==='PDFDropdown' || type==='PDFOptionList'){
-        const current=(f.getSelected?.()[0])||'';
-        const isQuantity=/^Nombre\s+\d+$/i.test(rawName);
-        if(isQuantity){
-          const opts=Array.from({length:10},(_,n)=>String(n+1));
-          const selected=opts.includes(current)?current:'';
-          return `<label class="fill-field"><span>${label}</span><select data-fill-name="${name}" data-fill-type="dropdown"><option value="">—</option>${opts.map(o=>`<option value="${o}" ${o===selected?'selected':''}>${o}</option>`).join('')}</select></label>`;
-        }
+      if(type==='PDFDropdown' || type==='PDFOptionList' || typeof f.getOptions==='function'){
+        const current=(f.getSelected?.()[0]||'');
         let opts=[]; try{opts=f.getOptions();}catch(e){}
         return `<label class="fill-field"><span>${label}</span><select data-fill-name="${name}" data-fill-type="dropdown"><option value="">—</option>${opts.map(o=>`<option value="${esc(o)}" ${o===current?'selected':''}>${esc(o)}</option>`).join('')}</select></label>`;
       }
