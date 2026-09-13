@@ -328,6 +328,12 @@ async function openFillPdf(pdfId,logementId){
 function closeFillPdf(){document.getElementById('fillModal')?.remove();fillPdfId=null;fillLogementId=null;fillDoc=null;fillForm=null;}
 async function saveFilledPdf(){
   const msg=document.getElementById('fillMsg'); if(!fillForm||!fillPdfId)return;
+
+  // Ouvre une fenêtre immédiatement au clic pour éviter le blocage des pop-up
+  // lorsque le PDF sera disponible après l'enregistrement.
+  let pdfWindow=null;
+  try{ pdfWindow=window.open('about:blank','_blank'); }catch(e){}
+
   msg.className='small';msg.textContent='Enregistrement du PDF…';
   try{
     document.querySelectorAll('#fillFields [data-fill-name]').forEach(el=>{
@@ -339,18 +345,51 @@ async function saveFilledPdf(){
         const v=el.value; if(v) f.select(v); else { try{f.setSelected([])}catch(e){} }
       }else f.setText(el.value||'');
     });
-    // Keep the existing PDF form structure; do not flatten it.
+
+    // Conserve les champs du PDF original et les signatures déjà présentes.
     const saved=await fillDoc.save({updateFieldAppearances:true});
-    const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',fillPdfId).single(); if(error||!pdf)throw error||new Error('PDF introuvable.');
+    const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',fillPdfId).single();
+    if(error||!pdf)throw error||new Error('PDF introuvable.');
+
     const path=`${fillLogementId}/filled-${Date.now()}-${pdf.original_filename.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
     const blob=new Blob([saved],{type:'application/pdf'});
-    const {error:ue}=await supabaseClient.storage.from('glen-documents').upload(path,blob,{contentType:'application/pdf',upsert:false}); if(ue)throw ue;
+    const {error:ue}=await supabaseClient.storage.from('glen-documents').upload(path,blob,{contentType:'application/pdf',upsert:false});
+    if(ue)throw ue;
+
     const {error:up}=await supabaseClient.from('pdf_documents').update({storage_path:path,updated_at:new Date().toISOString()}).eq('id',pdf.id);
-    if(up){await supabaseClient.storage.from('glen-documents').remove([path]);throw up;}
+    if(up){
+      await supabaseClient.storage.from('glen-documents').remove([path]);
+      throw up;
+    }
+
     await supabaseClient.storage.from('glen-documents').remove([pdf.storage_path]);
-    msg.className='ok';msg.textContent='PDF enregistré avec les modifications.';
-    setTimeout(()=>{closeFillPdf();openLogement(fillLogementId,'admin');},700);
-  }catch(e){msg.className='error';msg.textContent='Erreur : '+(e?.message||e);}
+
+    // Génère le lien du PDF nouvellement enregistré puis l'ouvre automatiquement.
+    const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(path,3600);
+    if(se||!urlData?.signedUrl)throw se||new Error('Impossible d’ouvrir le PDF enregistré.');
+
+    msg.className='ok';
+    msg.textContent='PDF enregistré. Ouverture du PDF…';
+
+    if(pdfWindow && !pdfWindow.closed){
+      pdfWindow.location.href=urlData.signedUrl;
+    }else{
+      // Secours si le navigateur a bloqué la nouvelle fenêtre.
+      const a=document.createElement('a');
+      a.href=urlData.signedUrl;
+      a.target='_blank';
+      a.rel='noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    setTimeout(()=>{closeFillPdf();},700);
+  }catch(e){
+    if(pdfWindow && !pdfWindow.closed) pdfWindow.close();
+    msg.className='error';
+    msg.textContent='Erreur : '+(e?.message||e);
+  }
 }
 async function openPdf(pdfId){
   const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single();
