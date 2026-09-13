@@ -277,7 +277,7 @@ async function applyEnterpriseSignature(){
     const {error:up}=await supabaseClient.from('pdf_documents').update({storage_path:signedPath,updated_at:new Date().toISOString()}).eq('id',pdf.id); if(up){await supabaseClient.storage.from('glen-documents').remove([signedPath]);throw up;}
     await supabaseClient.storage.from('glen-documents').remove([pdf.storage_path]);
     msg.className='ok';msg.textContent='Signature Entreprise enregistrée dans le PDF.';
-    setTimeout(()=>{closeSignature();openLogement(signatureLogementId,'admin');},700);
+    setTimeout(()=>{closeSignature();},700);
   }catch(e){msg.className='error';msg.textContent='Erreur : '+(e?.message||e);}
 }
 async function openPdf(pdfId){
