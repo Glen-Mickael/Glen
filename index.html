@@ -21,6 +21,25 @@ hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 #app{min-height:70vh}.fill-field{display:block;margin:10px 0}.fill-field>span{display:block;font-weight:700;font-size:14px;margin-bottom:5px}.fill-field input[type=text],.fill-field select{width:100%;padding:10px;border:1px solid #c9d3dc;border-radius:8px;font-size:16px;background:#fff}.checkbox-field{display:flex;align-items:center;gap:10px;padding:8px 0}.checkbox-field span{margin:0}.checkbox-field input{width:20px;height:20px}
 .modal-backdrop{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:14px;z-index:1000}.modal{background:#fff;border-radius:18px;max-width:760px;width:100%;padding:18px;box-shadow:0 15px 50px #0005}.sig-wrap{border:2px dashed #9aa8b5;border-radius:12px;background:#fff;touch-action:none}.sig-wrap canvas{width:100%;height:220px;display:block;border-radius:10px;touch-action:none}.sig-note{font-size:13px;color:#66727e;margin:8px 0}.modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
 </style>
+<style>
+.checkbox-field{
+  display:flex!important;
+  align-items:center!important;
+  gap:10px!important;
+  min-height:46px!important;
+  padding:10px 14px!important;
+  margin:6px 0!important;
+}
+.checkbox-field input[type="checkbox"]{
+  width:22px!important;
+  height:22px!important;
+  flex:0 0 auto!important;
+}
+.checkbox-field span{
+  font-weight:600!important;
+}
+</style>
+
 </head>
 <body>
 <header><h1>GLEN</h1><p>Gestion des chantiers et logements</p></header>
@@ -331,14 +350,14 @@ const FIELD_LABELS={
   "Check Box12":"Création de trappes de ramonage",
   "Check Box13":"Ramonage des conduits de liaisons",
   "Check Box14":"Ramonage des gaines",
-  "Check Box20":"Avis locataire – Déroulement des travaux : 0 (insatisfait)",
-  "Check Box23":"Avis locataire – Déroulement des travaux : 1 (peu satisfait)",
-  "Check Box25":"Avis locataire – Déroulement des travaux : 2 (très satisfait)",
-  "Check Box201":"Avis locataire – Propreté du logement : 0 (insatisfait)",
-  "Check Box24":"Avis locataire – Propreté du logement : 1 (peu satisfait)",
-  "Check Box26":"Avis locataire – Propreté du logement : 2 (très satisfait)"
+  "Check Box20":"Avis locataire – Déroulement des travaux – 0",
+  "Check Box23":"Avis locataire – Déroulement des travaux – 1",
+  "Check Box25":"Avis locataire – Déroulement des travaux – 2",
+  "Check Box201":"Avis locataire – Propreté du logement – 0",
+  "Check Box24":"Avis locataire – Propreté du logement – 1",
+  "Check Box26":"Avis locataire – Propreté du logement – 2"
 };
-const HIDDEN_FIXED_FIELDS=new Set(["1","Text2","Text3","Text111"]);
+const HIDDEN_FIXED_FIELDS=new Set(["1","Text2","Text3","Text111","Numéro locataire"]);
 
 let fillPdfId=null, fillLogementId=null, fillDoc=null, fillForm=null;
 async function openFillPdf(pdfId,logementId){
@@ -364,8 +383,14 @@ async function openFillPdf(pdfId,logementId){
       const type=f.constructor.name;
       if(type==='PDFCheckBox') return `<label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="${name}" data-fill-type="checkbox" ${f.isChecked()?'checked':''}><span>${label}</span></label>`;
       if(type==='PDFDropdown' || type==='PDFOptionList'){
-        let opts=[]; try{opts=f.getOptions();}catch(e){}
         const current=(f.getSelected?.()[0])||'';
+        const isNombre=rawName.startsWith('Nombre ');
+        if(isNombre){
+          const opts=Array.from({length:10},(_,n)=>String(n+1));
+          const selected=opts.includes(current)?current:'';
+          return `<label class="fill-field"><span>${label}</span><select data-fill-name="${name}" data-fill-type="dropdown"><option value="">—</option>${opts.map(o=>`<option value="${o}" ${o===selected?'selected':''}>${o}</option>`).join('')}</select></label>`;
+        }
+        let opts=[]; try{opts=f.getOptions();}catch(e){}
         return `<label class="fill-field"><span>${label}</span><select data-fill-name="${name}" data-fill-type="dropdown"><option value="">—</option>${opts.map(o=>`<option value="${esc(o)}" ${o===current?'selected':''}>${esc(o)}</option>`).join('')}</select></label>`;
       }
       let val=''; try{val=f.getText?.()||'';}catch(e){}
