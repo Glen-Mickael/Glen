@@ -181,7 +181,7 @@ async function openChantier(id){
     <h2>${esc(c.nom)}</h2>
     <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Logements</h3><label class="btn" style="display:inline-block;text-align:center">📥 Importer Excel<input id="excelInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewExcel('${id}',this.files[0])"></label></div>
     <p class="small">L'import se fait dans ce chantier. Les logements seront associés automatiquement à <b>${esc(c.nom)}</b>.</p>
-    ${l?.length?l.map(x=>`<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><b>${esc(x.nom||"Logement")}</b><span class="status-badge ${x.status==='termine'?'status-done':'status-todo'}">${x.status==='termine'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
+    ${l?.length?l.map(x=>`<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><b>${esc(x.nom||"Logement")}</b><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
     <div id="importArea"></div>
     <hr><h3>Poseurs autorisés sur ce chantier</h3>
     <select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin-bottom:10px">
@@ -251,7 +251,7 @@ async function poseurChantier(id){
   if(error){set("Erreur : "+esc(error.message),"error");return;}
   app.innerHTML=`<div class="card"><button class="btn secondary" onclick="poseurHome()">← Retour</button>
   <h2>${esc(c.nom)}</h2><h3>Logements</h3>
-  ${l?.length?l.map(x=>`<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">${esc(x.nom||"Logement")}</h3><span class="status-badge ${x.status==='termine'?'status-done':'status-todo'}">${x.status==='termine'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><button class="btn" onclick="openLogement('${x.id}')">Ouvrir</button></div>`).join(""):"<p class='small'>Aucun logement disponible.</p>"}
+  ${l?.length?l.map(x=>`<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">${esc(x.nom||"Logement")}</h3><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><button class="btn" onclick="openLogement('${x.id}')">Ouvrir</button></div>`).join(""):"<p class='small'>Aucun logement disponible.</p>"}
   </div>`;
 }
 async function openLogement(id,mode='poseur'){
@@ -270,7 +270,7 @@ async function openLogement(id,mode='poseur'){
     <div id="pdfMsg"></div>
     ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="openPdf('${pdf.id}')">📄 Ouvrir le PDF</button>${mode==='admin'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir / Enregistrer</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Entreprise</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Locataire</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:''}</div></div>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
     <p class="small">Le fichier est conservé comme PDF original, sans modification ni changement de mise en page.</p>
-    <hr><div class="validate-box"><h3>📋 État du logement</h3><div class="status-badge ${l.status==='termine'?'status-done':'status-todo'}">${l.status==='termine'?'✅ Logement terminé':'⏳ Logement à faire'}</div>${l.status==='termine'&&l.completed_at?`<div class="done-note">Terminé le ${new Date(l.completed_at).toLocaleString('fr-FR')}</div>`:''}${mode==='poseur'?`<div style="margin-top:12px">${l.status==='termine'?`<button class="btn secondary" onclick="setLogementStatus('${l.id}','a_faire')">↩️ Rouvrir le logement</button>`:`<button class="btn" onclick="setLogementStatus('${l.id}','termine')">✅ Terminer / Valider le logement</button>`}</div><p class="small">À utiliser uniquement lorsque les photos et le dossier du logement sont terminés.</p>`:''}${mode==='admin'&&l.status==='termine'?`<div style="margin-top:12px"><button class="btn secondary" onclick="setLogementStatus('${l.id}','a_faire')">↩️ Rouvrir le logement</button></div>`:''}<div id="statusMsg"></div></div>
+    <hr><div class="validate-box"><h3>📋 État du logement</h3><div class="status-badge ${l.statut==='Terminé'?'status-done':'status-todo'}">${l.statut==='Terminé'?'✅ Logement terminé':'⏳ Logement à faire'}</div>${l.statut==='Terminé'&&l.termine_at?`<div class="done-note">Terminé le ${new Date(l.termine_at).toLocaleString('fr-FR')}</div>`:''}${mode==='poseur'?`<div style="margin-top:12px">${l.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir le logement</button>`:`<button class="btn" onclick="setLogementStatus('${l.id}','Terminé')">✅ Terminer / Valider le logement</button>`}</div><p class="small">À utiliser uniquement lorsque les photos et le dossier du logement sont terminés.</p>`:''}${mode==='admin'&&l.statut==='Terminé'?`<div style="margin-top:12px"><button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir le logement</button></div>`:''}<div id="statusMsg"></div></div>
     <hr><h3>Photos</h3>
     ${mode==='poseur'?`<div class="row">
       <label class="btn file-label">📷 Prendre une photo<input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadPhoto('${l.id}',this.files[0])"></label>
@@ -283,12 +283,12 @@ async function openLogement(id,mode='poseur'){
 
 async function setLogementStatus(logementId,status){
   const msg=document.getElementById('statusMsg');
-  const label=status==='termine'?'terminé':'à faire';
-  if(status==='termine' && !confirm('Confirmer que ce logement est terminé ?')) return;
+  const label=status==='Terminé'?'terminé':'à faire';
+  if(status==='Terminé' && !confirm('Confirmer que ce logement est terminé ?')) return;
   if(msg){msg.className='small';msg.textContent='Enregistrement…';}
   try{
     const user=(await supabaseClient.auth.getUser()).data.user;
-    const payload=status==='termine'?{status:'termine',completed_at:new Date().toISOString(),completed_by:user.id}:{status:'a_faire',completed_at:null,completed_by:null};
+    const payload=status==='Terminé'?{statut:'Terminé',termine_at:new Date().toISOString(),termine_par:user.id}:{statut:'À faire',termine_at:null,termine_par:null};
     const {error}=await supabaseClient.from('logements').update(payload).eq('id',logementId);
     if(error)throw error;
     await openLogement(logementId,currentProfile?.role==='admin'?'admin':'poseur');
