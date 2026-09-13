@@ -15,7 +15,7 @@ input{width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;font-s
 .item{border:1px solid #dce3e9;border-radius:14px;padding:15px;margin:10px 0}.item h3{margin:0 0 5px}.item p{margin:4px 0}
 .badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#e9f1f8;color:#203a5d;font-size:13px;font-weight:700}
 .hidden{display:none!important}
-.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:12px}.photo-card{border:1px solid #dce3e9;border-radius:12px;padding:8px;background:#fff}.photo-card img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:9px;display:block}.photo-card .small{font-size:12px;margin:6px 0}.file-label{display:inline-block}
+.pdf-box{border:1px solid #dce3e9;border-radius:14px;padding:15px;margin:10px 0;background:#fafcfe}.pdf-name{font-weight:700;word-break:break-word}.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:12px}.photo-card{border:1px solid #dce3e9;border-radius:12px;padding:8px;background:#fff}.photo-card img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:9px;display:block}.photo-card .small{font-size:12px;margin:6px 0}.file-label{display:inline-block}
 label{font-weight:600}
 hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 #app{min-height:70vh}
@@ -113,7 +113,7 @@ async function openChantier(id){
     <h2>${esc(c.nom)}</h2>
     <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Logements</h3><label class="btn" style="display:inline-block;text-align:center">📥 Importer Excel<input id="excelInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewExcel('${id}',this.files[0])"></label></div>
     <p class="small">L'import se fait dans ce chantier. Les logements seront associés automatiquement à <b>${esc(c.nom)}</b>.</p>
-    ${l?.length?l.map(x=>`<div class="item"><b>${esc(x.nom||"Logement")}</b><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Voir les photos</button></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
+    ${l?.length?l.map(x=>`<div class="item"><b>${esc(x.nom||"Logement")}</b><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
     <div id="importArea"></div>
     <hr><h3>Poseurs autorisés sur ce chantier</h3>
     <select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin-bottom:10px">
@@ -191,10 +191,17 @@ async function openLogement(id,mode='poseur'){
   if(error||!l){set("Logement introuvable.","error");return;}
   const {data:photos,error:pe}=await supabaseClient.from("photos").select("*").eq("logement_id",id).order("created_at",{ascending:false});
   if(pe){set("Erreur photos : "+esc(pe.message),"error");return;}
+  const {data:pdf,error:de}=await supabaseClient.from("pdf_documents").select("*").eq("logement_id",id).maybeSingle();
+  if(de){set("Erreur PDF : "+esc(de.message),"error");return;}
   const back=mode==='admin'?`openChantier('${l.chantier_id}')`:`poseurChantier('${l.chantier_id}')`;
   app.innerHTML=`<div class="card">
     <div class="row"><button class="btn secondary" onclick="${back}">← Retour</button>${mode==='admin'?'<span class="badge">ADMINISTRATEUR</span>':'<span class="badge">POSEUR</span>'}</div>
     <h2>${esc(l.nom||"Logement")}</h2><p>${esc(l.adresse||"")}</p>
+    <hr><h3>📄 Document PDF original</h3>
+    ${mode==='admin'?`<label class="btn file-label">📄 ${pdf?'Remplacer le PDF':'Ajouter le PDF original'}<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadPdf('${l.id}',this.files[0])"></label>`:''}
+    <div id="pdfMsg"></div>
+    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="openPdf('${pdf.id}')">📄 Ouvrir le PDF</button>${mode==='admin'?`<button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:''}</div></div>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
+    <p class="small">Le fichier est conservé comme PDF original, sans modification ni changement de mise en page.</p>
     <hr><h3>Photos</h3>
     ${mode==='poseur'?`<div class="row">
       <label class="btn file-label">📷 Prendre une photo<input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadPhoto('${l.id}',this.files[0])"></label>
@@ -204,6 +211,47 @@ async function openLogement(id,mode='poseur'){
     <div id="photoGrid" class="photo-grid">${renderPhotos(photos||[],mode)}</div>
   </div>`;
 }
+
+async function uploadPdf(logementId,file){
+  if(!file)return;
+  const msg=document.getElementById('pdfMsg');
+  if(msg){msg.className='small';msg.textContent='Enregistrement du PDF…';}
+  try{
+    if(file.type!=='application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) throw new Error('Le fichier doit être un PDF.');
+    const user=(await supabaseClient.auth.getUser()).data.user;
+    const {data:old}=await supabaseClient.from('pdf_documents').select('*').eq('logement_id',logementId).maybeSingle();
+    if(old){
+      const {error:re}=await supabaseClient.storage.from('glen-documents').remove([old.storage_path]);
+      if(re) throw re;
+      const {error:de}=await supabaseClient.from('pdf_documents').delete().eq('id',old.id);
+      if(de) throw de;
+    }
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const path=`${logementId}/${safeName}`;
+    const {error:ue}=await supabaseClient.storage.from('glen-documents').upload(path,file,{contentType:'application/pdf',upsert:false});
+    if(ue)throw ue;
+    const {error:ie}=await supabaseClient.from('pdf_documents').insert({logement_id:logementId,original_filename:file.name,storage_path:path,uploaded_by:user.id});
+    if(ie){await supabaseClient.storage.from('glen-documents').remove([path]);throw ie;}
+    if(msg){msg.className='ok';msg.textContent='PDF enregistré.';}
+    await openLogement(logementId,'admin');
+  }catch(e){if(msg){msg.className='error';msg.textContent='Erreur : '+e.message;}}
+}
+async function openPdf(pdfId){
+  const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single();
+  if(error||!pdf){alert('PDF introuvable.');return;}
+  const {data,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);
+  if(se){alert(se.message);return;}
+  window.open(data.signedUrl,'_blank','noopener');
+}
+async function deletePdf(pdfId,path,logementId){
+  if(!confirm('Supprimer le PDF de ce logement ?'))return;
+  const {error:se}=await supabaseClient.storage.from('glen-documents').remove([path]);
+  if(se){alert(se.message);return;}
+  const {error:de}=await supabaseClient.from('pdf_documents').delete().eq('id',pdfId);
+  if(de){alert(de.message);return;}
+  await openLogement(logementId,'admin');
+}
+
 function renderPhotos(photos,mode){
   if(!photos.length)return '<p class="small">Aucune photo pour le moment.</p>';
   return photos.map(p=>`<div class="photo-card"><img src="${esc(p.public_url)}" alt="Photo logement"><div class="small">${new Date(p.created_at).toLocaleString('fr-FR')}</div>${mode==='poseur'?`<button class="btn danger" style="width:100%;padding:9px 12px;font-size:14px" onclick="deletePhoto('${p.id}','${esc(p.storage_path)}','${p.logement_id}')">Supprimer</button>`:''}</div>`).join('');
