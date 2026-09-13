@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#203a5d">
+<title>GLEN</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
+header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
+main{max-width:900px;margin:22px auto;padding:0 16px}.card{background:white;border-radius:20px;padding:22px;margin-bottom:18px;box-shadow:0 5px 20px #0000000c}
+h2{margin-top:0}.btn{border:0;border-radius:12px;padding:13px 18px;font-size:16px;font-weight:700;cursor:pointer;background:#2375b9;color:#fff}.btn.secondary{background:#e8eef4;color:#203a5d}.btn.danger{background:#b93838}.btn:disabled{opacity:.5}
+input{width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;font-size:16px;margin:6px 0 12px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.small{color:#66727e}.error{color:#b42318;margin-top:8px}.ok{color:#18794e;margin-top:8px}
+.item{border:1px solid #dce3e9;border-radius:14px;padding:15px;margin:10px 0}.item h3{margin:0 0 5px}.item p{margin:4px 0}
+.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#e9f1f8;color:#203a5d;font-size:13px;font-weight:700}
+.hidden{display:none!important}
+.pdf-box{border:1px solid #dce3e9;border-radius:14px;padding:15px;margin:10px 0;background:#fafcfe}.pdf-name{font-weight:700;word-break:break-word}.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:12px}.photo-card{border:1px solid #dce3e9;border-radius:12px;padding:8px;background:#fff}.photo-card img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:9px;display:block}.photo-card .small{font-size:12px;margin:6px 0}.file-label{display:inline-block}
+label{font-weight:600}
+hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
+#app{min-height:70vh}
+.modal-backdrop{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:14px;z-index:1000}.modal{background:#fff;border-radius:18px;max-width:760px;width:100%;padding:18px;box-shadow:0 15px 50px #0005}.sig-wrap{border:2px dashed #9aa8b5;border-radius:12px;background:#fff;touch-action:none}.sig-wrap canvas{width:100%;height:220px;display:block;border-radius:10px;touch-action:none}.sig-note{font-size:13px;color:#66727e;margin:8px 0}.modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
+</style>
+</head>
+<body>
+<header><h1>GLEN</h1><p>Gestion des chantiers et logements</p></header>
+<main id="app"></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script>
+/* REMPLACER CES DEUX VALEURS PAR CELLES DE TON PROJET SUPABASE */
+const SUPABASE_URL = "https://vmhqbywplgahrxozroit.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KQHZK6sX5B4OHDo7UYHu1Q_iKsKsSf2";
+
+const app = document.getElementById("app");
+let supabaseClient = null, currentProfile = null;
+
+function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
+function set(msg, cls=""){app.innerHTML=`<div class="card ${cls}">${msg}</div>`;}
+
+function configOK(){
+  return SUPABASE_URL.startsWith("https://") && !SUPABASE_URL.includes("A_REMPLACER") &&
+         SUPABASE_PUBLISHABLE_KEY && !SUPABASE_PUBLISHABLE_KEY.includes("A_REMPLACER");
+}
+
+async function init(){
+  if(!configOK()){
+    set(`<h2>GLEN V2 — configuration</h2>
+    <p>La base de données n'est pas encore connectée.</p>
+    <p class="small">Après création du projet Supabase, remplace les deux valeurs indiquées dans le fichier index.html.</p>`);
+    return;
+  }
+  supabaseClient = window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+  const {data:{session}} = await supabaseClient.auth.getSession();
+  if(session) await loadProfile();
+  else loginView();
+}
+
+function loginView(){
+  app.innerHTML=`<div class="card">
+    <h2>Connexion</h2>
+    <label>Email</label><input id="email" type="email" autocomplete="username">
+    <label>Mot de passe</label><input id="password" type="password" autocomplete="current-password">
+    <button class="btn" onclick="login()">Se connecter</button>
+    <div id="msg"></div>
+  </div>`;
+}
+async function login(){
+  const msg=document.getElementById("msg");
+  msg.className="";
+  const {error}=await supabaseClient.auth.signInWithPassword({
+    email:document.getElementById("email").value.trim(),
+    password:document.getElementById("password").value
+  });
+  if(error){msg.className="error";msg.textContent="Connexion impossible : "+error.message;return;}
+  await loadProfile();
+}
+async function logout(){await supabaseClient.auth.signOut();currentProfile=null;loginView();}
+
+async function loadProfile(){
+  const {data,error}=await supabaseClient.from("profiles").select("*").eq("id",(await supabaseClient.auth.getUser()).data.user.id).single();
+  if(error){set("Profil introuvable. Vérifie que le compte existe dans Supabase et qu'il a bien une ligne dans profiles.","error");return;}
+  currentProfile=data;
+  currentProfile.role==="admin" ? adminHome() : poseurHome();
+}
+
+async function adminHome(){
+  const {data:chantiers,error}=await supabaseClient.from("chantiers").select("*").order("created_at",{ascending:false});
+  if(error){set("Erreur : "+esc(error.message),"error");return;}
+  app.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between">
+    <div><span class="badge">ADMINISTRATEUR</span><h2>Mes chantiers</h2></div>
+    <button class="btn secondary" onclick="logout()">Déconnexion</button>
+  </div>
+  <button class="btn" onclick="newChantier()">+ Nouveau chantier</button>
+  <div id="list">${chantiers?.length?chantiers.map(c=>`<div class="item">
+    <h3>${esc(c.nom)}</h3><p class="small">Créé le ${new Date(c.created_at).toLocaleDateString("fr-FR")}</p>
+    <div class="row"><button class="btn" onclick="openChantier('${c.id}')">Ouvrir</button></div>
+  </div>`).join(""):"<p class='small'>Aucun chantier créé.</p>"}</div></div>`;
+}
+async function newChantier(){
+  const nom=prompt("Nom du chantier");
+  if(!nom?.trim()) return;
+  const user=(await supabaseClient.auth.getUser()).data.user;
+  const {error}=await supabaseClient.from("chantiers").insert({nom:nom.trim(),created_by:user.id});
+  if(error){alert(error.message);return;} adminHome();
+}
+async function openChantier(id){
+  const {data:c}=await supabaseClient.from("chantiers").select("*").eq("id",id).single();
+  const {data:l}=await supabaseClient.from("logements").select("*").eq("chantier_id",id).order("created_at");
+  const {data:a}=await supabaseClient.from("chantier_poseurs").select("poseur_id, profiles(id,email,full_name)").eq("chantier_id",id);
+  const {data:p}=await supabaseClient.from("profiles").select("id,email,full_name").eq("role","poseur").order("email");
+  app.innerHTML=`<div class="card">
+    <div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button></div>
+    <h2>${esc(c.nom)}</h2>
+    <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Logements</h3><label class="btn" style="display:inline-block;text-align:center">📥 Importer Excel<input id="excelInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewExcel('${id}',this.files[0])"></label></div>
+    <p class="small">L'import se fait dans ce chantier. Les logements seront associés automatiquement à <b>${esc(c.nom)}</b>.</p>
+    ${l?.length?l.map(x=>`<div class="item"><b>${esc(x.nom||"Logement")}</b><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
+    <div id="importArea"></div>
+    <hr><h3>Poseurs autorisés sur ce chantier</h3>
+    <select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin-bottom:10px">
+      <option value="">Choisir un poseur</option>${p?.map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}</option>`).join("")}
+    </select>
+    <button class="btn" onclick="assignPoseur('${id}')">Ajouter le poseur</button>
+    <div>${a?.length?a.map(x=>`<div class="item"><b>${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}</b></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div>
+  </div>`;
+}
+async function assignPoseur(chantierId){
+  const poseurId=document.getElementById("poseurSelect").value;
+  if(!poseurId)return;
+  const {error}=await supabaseClient.from("chantier_poseurs").insert({chantier_id:chantierId,poseur_id:poseurId});
+  if(error && error.code!=="23505"){alert(error.message);return;}
+  openChantier(chantierId);
+}
+
+
+function normHeader(v){return String(v??"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/g,"");}
+function mapHeaders(headers){
+  const aliases={nom:["nom","nometprenom","nomlocataire","locataire"],adresse:["adresse","adresselogement"],code:["code","codepostal","cp"],commune:["commune","ville"],telephone:["telephone","tel","phone"],mail:["mail","email","courriel"],num_bat:["nbat","numbat","numerobatiment","batiment"],num_log:["nlog","numlog","numerologement","logement"],etage:["etage","niveau"],type:["type","typologie"]};
+  const out={}; headers.forEach((h,i)=>{const n=normHeader(h); for(const [key,list] of Object.entries(aliases)){if(list.includes(n) && out[key]===undefined) out[key]=i;}}); return out;
+}
+async function previewExcel(chantierId,file){
+  if(!file)return;
+  const area=document.getElementById("importArea");
+  area.innerHTML='<div class="item"><b>Lecture du fichier…</b></div>';
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array"});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+    if(!rows.length) throw new Error("Le fichier est vide.");
+    const headers=rows[0]; const idx=mapHeaders(headers);
+    const required=["nom","adresse","code","commune","telephone","mail","num_bat","num_log","etage","type"];
+    const missing=required.filter(k=>idx[k]===undefined);
+    if(missing.length) throw new Error("Colonnes non reconnues : "+missing.join(", ")+". Vérifie la première ligne du fichier Excel.");
+    const data=rows.slice(1).filter(r=>r.some(v=>String(v).trim()!=="")).map(r=>{const o={}; for(const k of required)o[k]=String(r[idx[k]]??"").trim(); return o;});
+    if(!data.length) throw new Error("Aucun logement trouvé dans le fichier.");
+    window.glenImport={chantierId,data};
+    area.innerHTML=`<div class="item"><h3>Prévisualisation de l'import</h3><p><b>${data.length}</b> logement(s) détecté(s).</p><div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>${required.map(k=>`<th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">${esc(k)}</th>`).join("")}</tr></thead><tbody>${data.slice(0,8).map(r=>`<tr>${required.map(k=>`<td style="padding:6px;border-bottom:1px solid #eee">${esc(r[k])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>${data.length>8?'<p class="small">Aperçu limité aux 8 premières lignes. Toutes les lignes seront importées.</p>':''}<div class="row"><button class="btn" onclick="validateImport()">✅ Valider l’import</button><button class="btn secondary" onclick="cancelImport('${chantierId}')">Annuler</button></div><div id="importMsg"></div></div>`;
+  }catch(e){area.innerHTML=`<div class="item error">${esc(e.message)}</div>`;}
+}
+function cancelImport(chantierId){window.glenImport=null; openChantier(chantierId);}
+async function validateImport(){
+  const imp=window.glenImport; if(!imp)return;
+  const msg=document.getElementById("importMsg"); if(msg)msg.textContent="Import en cours…";
+  const payload=imp.data.map(x=>({...x,chantier_id:imp.chantierId}));
+  const {error}=await supabaseClient.from("logements").insert(payload);
+  if(error){if(msg){msg.className="error";msg.textContent="Erreur : "+error.message;}return;}
+  window.glenImport=null;
+  await openChantier(imp.chantierId);
+}
+
+async function poseurHome(){
+  const {data:rows,error}=await supabaseClient.from("chantier_poseurs").select("chantier_id,chantiers(id,nom)");
+  if(error){set("Erreur : "+esc(error.message),"error");return;}
+  app.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between">
+    <div><span class="badge">POSEUR</span><h2>Mes chantiers</h2></div>
+    <button class="btn secondary" onclick="logout()">Déconnexion</button>
+  </div>
+  ${rows?.length?rows.map(r=>`<div class="item"><h3>${esc(r.chantiers?.nom)}</h3><button class="btn" onclick="poseurChantier('${r.chantiers?.id}')">Ouvrir</button></div>`).join(""):"<p class='small'>Aucun chantier ne vous a été attribué.</p>"}</div>`;
+}
+async function poseurChantier(id){
+  const {data:c}=await supabaseClient.from("chantiers").select("*").eq("id",id).single();
+  const {data:l,error}=await supabaseClient.from("logements").select("*").eq("chantier_id",id).order("created_at");
+  if(error){set("Erreur : "+esc(error.message),"error");return;}
+  app.innerHTML=`<div class="card"><button class="btn secondary" onclick="poseurHome()">← Retour</button>
+  <h2>${esc(c.nom)}</h2><h3>Logements</h3>
+  ${l?.length?l.map(x=>`<div class="item"><h3>${esc(x.nom||"Logement")}</h3><p>${esc(x.adresse||"")}</p><button class="btn" onclick="openLogement('${x.id}')">Ouvrir</button></div>`).join(""):"<p class='small'>Aucun logement disponible.</p>"}
+  </div>`;
+}
+async function openLogement(id,mode='poseur'){
+  const {data:l,error}=await supabaseClient.from("logements").select("*").eq("id",id).single();
+  if(error||!l){set("Logement introuvable.","error");return;}
+  const {data:photos,error:pe}=await supabaseClient.from("photos").select("*").eq("logement_id",id).order("created_at",{ascending:false});
+  if(pe){set("Erreur photos : "+esc(pe.message),"error");return;}
+  const {data:pdf,error:de}=await supabaseClient.from("pdf_documents").select("*").eq("logement_id",id).maybeSingle();
+  if(de){set("Erreur PDF : "+esc(de.message),"error");return;}
+  const back=mode==='admin'?`openChantier('${l.chantier_id}')`:`poseurChantier('${l.chantier_id}')`;
+  app.innerHTML=`<div class="card">
+    <div class="row"><button class="btn secondary" onclick="${back}">← Retour</button>${mode==='admin'?'<span class="badge">ADMINISTRATEUR</span>':'<span class="badge">POSEUR</span>'}</div>
+    <h2>${esc(l.nom||"Logement")}</h2><p>${esc(l.adresse||"")}</p>
+    <hr><h3>📄 Document PDF original</h3>
+    ${mode==='admin'?`<label class="btn file-label">📄 ${pdf?'Remplacer le PDF':'Ajouter le PDF original'}<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadPdf('${l.id}',this.files[0])"></label>`:''}
+    <div id="pdfMsg"></div>
+    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="openPdf('${pdf.id}')">📄 Ouvrir le PDF</button>${mode==='admin'?`<button class="btn" onclick="openSignature('${pdf.id}','${l.id}')">✍️ Signer – Entreprise</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:''}</div></div>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
+    <p class="small">Le fichier est conservé comme PDF original, sans modification ni changement de mise en page.</p>
+    <hr><h3>Photos</h3>
+    ${mode==='poseur'?`<div class="row">
+      <label class="btn file-label">📷 Prendre une photo<input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadPhoto('${l.id}',this.files[0])"></label>
+      <label class="btn secondary file-label">🖼️ Ajouter une photo<input id="photoInput" type="file" accept="image/*" multiple style="display:none" onchange="uploadPhotos('${l.id}',this.files)"></label>
+    </div><p class="small">Les photos sont automatiquement enregistrées dans ce logement et visibles par l'administrateur.</p>`:'<p class="small">Photos prises par le poseur sur ce logement.</p>'}
+    <div id="photoMsg"></div>
+    <div id="photoGrid" class="photo-grid">${renderPhotos(photos||[],mode)}</div>
+  </div>`;
+}
+
+async function uploadPdf(logementId,file){
+  if(!file)return;
+  const msg=document.getElementById('pdfMsg');
+  if(msg){msg.className='small';msg.textContent='Enregistrement du PDF…';}
+  try{
+    if(file.type!=='application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) throw new Error('Le fichier doit être un PDF.');
+    const user=(await supabaseClient.auth.getUser()).data.user;
+    const {data:old}=await supabaseClient.from('pdf_documents').select('*').eq('logement_id',logementId).maybeSingle();
+    if(old){
+      const {error:re}=await supabaseClient.storage.from('glen-documents').remove([old.storage_path]);
+      if(re) throw re;
+      const {error:de}=await supabaseClient.from('pdf_documents').delete().eq('id',old.id);
+      if(de) throw de;
+    }
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const path=`${logementId}/${safeName}`;
+    const {error:ue}=await supabaseClient.storage.from('glen-documents').upload(path,file,{contentType:'application/pdf',upsert:false});
+    if(ue)throw ue;
+    const {error:ie}=await supabaseClient.from('pdf_documents').insert({logement_id:logementId,original_filename:file.name,storage_path:path,uploaded_by:user.id});
+    if(ie){await supabaseClient.storage.from('glen-documents').remove([path]);throw ie;}
+    if(msg){msg.className='ok';msg.textContent='PDF enregistré.';}
+    await openLogement(logementId,'admin');
+  }catch(e){if(msg){msg.className='error';msg.textContent='Erreur : '+e.message;}}
+}
+let signatureCanvas=null, signatureCtx=null, signatureDrawing=false, signatureLast=null, signaturePdfId=null, signatureLogementId=null;
+function openSignature(pdfId,logementId){
+  signaturePdfId=pdfId; signatureLogementId=logementId;
+  document.body.insertAdjacentHTML('beforeend',`<div id="sigModal" class="modal-backdrop"><div class="modal"><h2>✍️ Signature Entreprise</h2><p class="sig-note">Signez dans la zone ci-dessous avec la souris ou le doigt. La signature sera placée dans la case « Entreprise » du PDF original.</p><div class="sig-wrap"><canvas id="signatureCanvas"></canvas></div><div class="modal-actions"><button class="btn secondary" onclick="clearSignature()">Effacer</button><button class="btn secondary" onclick="closeSignature()">Annuler</button><button class="btn" onclick="applyEnterpriseSignature()">Valider la signature</button></div><div id="sigMsg"></div></div></div>`);
+  signatureCanvas=document.getElementById('signatureCanvas'); signatureCtx=signatureCanvas.getContext('2d'); resizeSignatureCanvas();
+  window.addEventListener('resize',resizeSignatureCanvas,{once:true});
+  signatureCanvas.addEventListener('pointerdown',sigStart); signatureCanvas.addEventListener('pointermove',sigMove); signatureCanvas.addEventListener('pointerup',sigEnd); signatureCanvas.addEventListener('pointercancel',sigEnd); signatureCanvas.addEventListener('pointerleave',sigEnd);
+  clearSignature();
+}
+function resizeSignatureCanvas(){if(!signatureCanvas)return;const r=signatureCanvas.getBoundingClientRect(),d=Math.max(1,window.devicePixelRatio||1);signatureCanvas.width=Math.round(r.width*d);signatureCanvas.height=Math.round(220*d);signatureCtx.setTransform(d,0,0,d,0,0);signatureCtx.lineWidth=2.2;signatureCtx.lineCap='round';signatureCtx.lineJoin='round';signatureCtx.strokeStyle='#111';}
+function sigPoint(e){const r=signatureCanvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+function sigStart(e){signatureDrawing=true;signatureLast=sigPoint(e);signatureCanvas.setPointerCapture?.(e.pointerId);signatureCtx.beginPath();signatureCtx.moveTo(signatureLast.x,signatureLast.y);}
+function sigMove(e){if(!signatureDrawing)return;const p=sigPoint(e);signatureCtx.lineTo(p.x,p.y);signatureCtx.stroke();signatureLast=p;}
+function sigEnd(){signatureDrawing=false;signatureLast=null;}
+function clearSignature(){if(!signatureCanvas)return;signatureCtx.clearRect(0,0,signatureCanvas.width/(window.devicePixelRatio||1),signatureCanvas.height/(window.devicePixelRatio||1));}
+function closeSignature(){document.getElementById('sigModal')?.remove();signatureCanvas=null;signatureCtx=null;signaturePdfId=null;signatureLogementId=null;}
+async function applyEnterpriseSignature(){
+  const msg=document.getElementById('sigMsg'); if(!signatureCanvas||!signaturePdfId)return;
+  const blank=document.createElement('canvas'); blank.width=signatureCanvas.width; blank.height=signatureCanvas.height;
+  const hasInk=signatureCanvas.getContext('2d').getImageData(0,0,signatureCanvas.width,signatureCanvas.height).data.some((v,i)=>i%4===3&&v>0);
+  if(!hasInk){msg.className='error';msg.textContent='Veuillez signer avant de valider.';return;}
+  msg.className='small';msg.textContent='Préparation du PDF signé…';
+  try{
+    const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',signaturePdfId).single(); if(error||!pdf)throw error||new Error('PDF introuvable.');
+    const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600); if(se)throw se;
+    const response=await fetch(urlData.signedUrl); if(!response.ok)throw new Error('Impossible de lire le PDF original.');
+    const bytes=await response.arrayBuffer();
+    const doc=await PDFLib.PDFDocument.load(bytes,{updateFieldAppearances:false});
+    const page=doc.getPages()[0];
+    const png=await doc.embedPng(signatureCanvas.toDataURL('image/png'));
+    // Case Entreprise du PDF original : x=349..527, y=766..806 (origine PDF en bas à gauche).
+    page.drawImage(png,{x:350,y:36,width:175,height:68,opacity:1});
+    const signed=await doc.save({updateFieldAppearances:false});
+    const signedPath=`${signatureLogementId}/signed-${Date.now()}-${pdf.original_filename.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+    const blob=new Blob([signed],{type:'application/pdf'});
+    const {error:ue}=await supabaseClient.storage.from('glen-documents').upload(signedPath,blob,{contentType:'application/pdf',upsert:false}); if(ue)throw ue;
+    const {error:up}=await supabaseClient.from('pdf_documents').update({storage_path:signedPath,updated_at:new Date().toISOString()}).eq('id',pdf.id); if(up){await supabaseClient.storage.from('glen-documents').remove([signedPath]);throw up;}
+    await supabaseClient.storage.from('glen-documents').remove([pdf.storage_path]);
+    msg.className='ok';msg.textContent='Signature Entreprise enregistrée dans le PDF.';
+    setTimeout(()=>{closeSignature();openLogement(signatureLogementId,'admin');},700);
+  }catch(e){msg.className='error';msg.textContent='Erreur : '+(e?.message||e);}
+}
+async function openPdf(pdfId){
+  const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single();
+  if(error||!pdf){alert('PDF introuvable.');return;}
+  const {data,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);
+  if(se){alert(se.message);return;}
+  window.open(data.signedUrl,'_blank','noopener');
+}
+async function deletePdf(pdfId,path,logementId){
+  if(!confirm('Supprimer le PDF de ce logement ?'))return;
+  const {error:se}=await supabaseClient.storage.from('glen-documents').remove([path]);
+  if(se){alert(se.message);return;}
+  const {error:de}=await supabaseClient.from('pdf_documents').delete().eq('id',pdfId);
+  if(de){alert(de.message);return;}
+  await openLogement(logementId,'admin');
+}
+
+function renderPhotos(photos,mode){
+  if(!photos.length)return '<p class="small">Aucune photo pour le moment.</p>';
+  return photos.map(p=>`<div class="photo-card"><img src="${esc(p.public_url)}" alt="Photo logement"><div class="small">${new Date(p.created_at).toLocaleString('fr-FR')}</div>${mode==='poseur'?`<button class="btn danger" style="width:100%;padding:9px 12px;font-size:14px" onclick="deletePhoto('${p.id}','${esc(p.storage_path)}','${p.logement_id}')">Supprimer</button>`:''}</div>`).join('');
+}
+async function uploadPhoto(logementId,file){
+  if(!file)return;
+  await uploadPhotos(logementId,[file]);
+}
+async function uploadPhotos(logementId,files){
+  const msg=document.getElementById('photoMsg');
+  if(!files||!files.length)return;
+  if(msg)msg.className='small'; if(msg)msg.textContent='Préparation de la photo…';
+  try{
+    const user=(await supabaseClient.auth.getUser()).data.user;
+    for(const file of Array.from(files)){
+      const blob=await compressImage(file);
+      const path=`${logementId}/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+      const {error:ue}=await supabaseClient.storage.from('glen-photos').upload(path,blob,{contentType:'image/jpeg',upsert:false});
+      if(ue)throw ue;
+      const {data:urlData}=supabaseClient.storage.from('glen-photos').getPublicUrl(path);
+      const {error:ie}=await supabaseClient.from('photos').insert({logement_id:logementId,storage_path:path,public_url:urlData.publicUrl,user_id:user.id});
+      if(ie){await supabaseClient.storage.from('glen-photos').remove([path]);throw ie;}
+    }
+    if(msg){msg.className='ok';msg.textContent='Photo(s) enregistrée(s).';}
+    await openLogement(logementId,'poseur');
+  }catch(e){if(msg){msg.className='error';msg.textContent='Erreur : '+e.message;}}
+}
+function compressImage(file){
+  return new Promise((resolve,reject)=>{
+    const img=new Image(),url=URL.createObjectURL(file);
+    img.onload=()=>{URL.revokeObjectURL(url);const max=1600;let w=img.naturalWidth,h=img.naturalHeight;if(w>max||h>max){const r=Math.min(max/w,max/h);w=Math.round(w*r);h=Math.round(h*r);}const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');ctx.drawImage(img,0,0,w,h);c.toBlob(b=>b?resolve(b):reject(new Error('Compression impossible')),'image/jpeg',0.82);};
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Image illisible'));};img.src=url;
+  });
+}
+async function deletePhoto(photoId,path,logementId){
+  if(!confirm('Supprimer cette photo ?'))return;
+  const {error:se}=await supabaseClient.storage.from('glen-photos').remove([path]);
+  if(se){alert(se.message);return;}
+  const {error:de}=await supabaseClient.from('photos').delete().eq('id',photoId);
+  if(de){alert(de.message);return;}
+  await openLogement(logementId,'poseur');
+}
+
+init();
+</script>
+</body>
+</html>
