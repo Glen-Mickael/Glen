@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#203a5d">
-<title>GLEN</title>
+<title>GLEN V8.7.1</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
@@ -212,7 +212,7 @@ async function openChantier(id){
     <div id="importArea"></div>
     <hr><h3>👷 Gestion des poseurs</h3>
     <p class="small">Seuls les poseurs affectés peuvent accéder à ce chantier sur leur téléphone.</p>
-    <div class="item"><b>Poseurs affectés</b>${a?.length?a.map(x=>`<div class="row" style="justify-content:space-between;margin-top:10px"><span>👷 ${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}${x.profiles?.full_name?`<span class="small"> — ${esc(x.profiles.email||"")}</span>`:""}</span><button class="btn danger" style="padding:9px 12px;font-size:14px" onclick="removePoseur('${id}','${x.poseur_id}')">❌ Retirer</button></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div>
+    <div class="item"><b>Poseurs affectés</b>${a?.length?a.map(x=>`<div style="margin-top:12px;padding:12px;border:1px solid #dce3e9;border-radius:12px"><div style="font-weight:700">👷 ${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}</div>${x.profiles?.full_name?`<div class="small">${esc(x.profiles.email||"")}</div>`:""}<button class="btn danger" style="margin-top:10px;padding:9px 12px;font-size:14px" onclick="removePoseur('${id}','${x.poseur_id}')">❌ Retirer ce poseur</button></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div>
     <div class="item"><b>Ajouter un poseur</b><select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin:10px 0"><option value="">Choisir un poseur</option>${p?.filter(x=>!(a||[]).some(y=>y.poseur_id===x.id)).map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}</option>`).join("")}</select><button class="btn" onclick="assignPoseur('${id}')">➕ Affecter le poseur</button></div>
   </div>`;
 }
