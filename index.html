@@ -210,10 +210,10 @@ async function openChantier(id){
     <p class="small">L'import se fait dans ce chantier. Les logements seront associés automatiquement à <b>${esc(c.nom)}</b>.</p>
     <div id="logementsList">${l?.length?l.map(logementHtml).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}</div>
     <div id="importArea"></div>
-    <hr><h3>Poseurs autorisés sur ce chantier</h3>
-    <select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin-bottom:10px"><option value="">Choisir un poseur</option>${p?.map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}</option>`).join("")}</select>
-    <button class="btn" onclick="assignPoseur('${id}')">Ajouter le poseur</button>
-    <div>${a?.length?a.map(x=>`<div class="item"><b>${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}</b></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div>
+    <hr><h3>👷 Gestion des poseurs</h3>
+    <p class="small">Seuls les poseurs affectés peuvent accéder à ce chantier sur leur téléphone.</p>
+    <div class="item"><b>Poseurs affectés</b>${a?.length?a.map(x=>`<div class="row" style="justify-content:space-between;margin-top:10px"><span>👷 ${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}${x.profiles?.full_name?`<span class="small"> — ${esc(x.profiles.email||"")}</span>`:""}</span><button class="btn danger" style="padding:9px 12px;font-size:14px" onclick="removePoseur('${id}','${x.poseur_id}')">❌ Retirer</button></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div>
+    <div class="item"><b>Ajouter un poseur</b><select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin:10px 0"><option value="">Choisir un poseur</option>${p?.filter(x=>!(a||[]).some(y=>y.poseur_id===x.id)).map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}</option>`).join("")}</select><button class="btn" onclick="assignPoseur('${id}')">➕ Affecter le poseur</button></div>
   </div>`;
 }
 function filterLogements(filter,btn){
@@ -224,9 +224,16 @@ function filterLogements(filter,btn){
 
 async function assignPoseur(chantierId){
   const poseurId=document.getElementById("poseurSelect").value;
-  if(!poseurId)return;
+  if(!poseurId){alert("Choisis un poseur.");return;}
   const {error}=await supabaseClient.from("chantier_poseurs").insert({chantier_id:chantierId,poseur_id:poseurId});
   if(error && error.code!=="23505"){alert(error.message);return;}
+  openChantier(chantierId);
+}
+
+async function removePoseur(chantierId,poseurId){
+  if(!confirm("Retirer ce poseur de ce chantier ? Il ne pourra plus voir ce chantier sur son téléphone.")) return;
+  const {error}=await supabaseClient.from("chantier_poseurs").delete().eq("chantier_id",chantierId).eq("poseur_id",poseurId);
+  if(error){alert(error.message);return;}
   openChantier(chantierId);
 }
 
