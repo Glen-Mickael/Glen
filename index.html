@@ -202,7 +202,7 @@ async function openLogement(id,mode='poseur'){
     <hr><h3>📄 Document PDF original</h3>
     ${mode==='admin'?`<label class="btn file-label">📄 ${pdf?'Remplacer le PDF':'Ajouter le PDF original'}<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadPdf('${l.id}',this.files[0])"></label>`:''}
     <div id="pdfMsg"></div>
-    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="openPdf('${pdf.id}')">📄 Ouvrir le PDF</button>${mode==='admin'?`<button class="btn" onclick="openSignature('${pdf.id}','${l.id}')">✍️ Signer – Entreprise</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:''}</div></div>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
+    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="openPdf('${pdf.id}')">📄 Ouvrir le PDF</button>${mode==='admin'?`<button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Entreprise</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Locataire</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:''}</div></div>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
     <p class="small">Le fichier est conservé comme PDF original, sans modification ni changement de mise en page.</p>
     <hr><h3>Photos</h3>
     ${mode==='poseur'?`<div class="row">
@@ -238,10 +238,12 @@ async function uploadPdf(logementId,file){
     await openLogement(logementId,'admin');
   }catch(e){if(msg){msg.className='error';msg.textContent='Erreur : '+e.message;}}
 }
-let signatureCanvas=null, signatureCtx=null, signatureDrawing=false, signatureLast=null, signaturePdfId=null, signatureLogementId=null;
-function openSignature(pdfId,logementId){
-  signaturePdfId=pdfId; signatureLogementId=logementId;
-  document.body.insertAdjacentHTML('beforeend',`<div id="sigModal" class="modal-backdrop"><div class="modal"><h2>✍️ Signature Entreprise</h2><p class="sig-note">Signez dans la zone ci-dessous avec la souris ou le doigt. La signature sera placée dans la case « Entreprise » du PDF original.</p><div class="sig-wrap"><canvas id="signatureCanvas"></canvas></div><div class="modal-actions"><button class="btn secondary" onclick="clearSignature()">Effacer</button><button class="btn secondary" onclick="closeSignature()">Annuler</button><button class="btn" onclick="applyEnterpriseSignature()">Valider la signature</button></div><div id="sigMsg"></div></div></div>`);
+let signatureCanvas=null, signatureCtx=null, signatureDrawing=false, signatureLast=null, signaturePdfId=null, signatureLogementId=null, signatureRole=null;
+function openSignature(pdfId,logementId,role='entreprise'){
+  signaturePdfId=pdfId; signatureLogementId=logementId; signatureRole=role;
+  const labels={entreprise:'Entreprise',gestionnaire:'Gestionnaire',locataire:'Locataire'};
+  const label=labels[role]||'Entreprise';
+  document.body.insertAdjacentHTML('beforeend',`<div id="sigModal" class="modal-backdrop"><div class="modal"><h2>✍️ Signature ${label}</h2><p class="sig-note">Signez dans la zone ci-dessous avec la souris ou le doigt. La signature sera placée dans la case « ${label} » du PDF original.</p><div class="sig-wrap"><canvas id="signatureCanvas"></canvas></div><div class="modal-actions"><button class="btn secondary" onclick="clearSignature()">Effacer</button><button class="btn secondary" onclick="closeSignature()">Annuler</button><button class="btn" onclick="applySignature()">Valider la signature</button></div><div id="sigMsg"></div></div></div>`);
   signatureCanvas=document.getElementById('signatureCanvas'); signatureCtx=signatureCanvas.getContext('2d'); resizeSignatureCanvas();
   window.addEventListener('resize',resizeSignatureCanvas,{once:true});
   signatureCanvas.addEventListener('pointerdown',sigStart); signatureCanvas.addEventListener('pointermove',sigMove); signatureCanvas.addEventListener('pointerup',sigEnd); signatureCanvas.addEventListener('pointercancel',sigEnd); signatureCanvas.addEventListener('pointerleave',sigEnd);
@@ -253,10 +255,11 @@ function sigStart(e){signatureDrawing=true;signatureLast=sigPoint(e);signatureCa
 function sigMove(e){if(!signatureDrawing)return;const p=sigPoint(e);signatureCtx.lineTo(p.x,p.y);signatureCtx.stroke();signatureLast=p;}
 function sigEnd(){signatureDrawing=false;signatureLast=null;}
 function clearSignature(){if(!signatureCanvas)return;signatureCtx.clearRect(0,0,signatureCanvas.width/(window.devicePixelRatio||1),signatureCanvas.height/(window.devicePixelRatio||1));}
-function closeSignature(){document.getElementById('sigModal')?.remove();signatureCanvas=null;signatureCtx=null;signaturePdfId=null;signatureLogementId=null;}
-async function applyEnterpriseSignature(){
+function closeSignature(){document.getElementById('sigModal')?.remove();signatureCanvas=null;signatureCtx=null;signaturePdfId=null;signatureLogementId=null;signatureRole=null;}
+async function applySignature(){
   const msg=document.getElementById('sigMsg'); if(!signatureCanvas||!signaturePdfId)return;
-  const blank=document.createElement('canvas'); blank.width=signatureCanvas.width; blank.height=signatureCanvas.height;
+  const labels={entreprise:'Entreprise',gestionnaire:'Gestionnaire',locataire:'Locataire'};
+  const label=labels[signatureRole]||'Entreprise';
   const hasInk=signatureCanvas.getContext('2d').getImageData(0,0,signatureCanvas.width,signatureCanvas.height).data.some((v,i)=>i%4===3&&v>0);
   if(!hasInk){msg.className='error';msg.textContent='Veuillez signer avant de valider.';return;}
   msg.className='small';msg.textContent='Préparation du PDF signé…';
@@ -268,21 +271,23 @@ async function applyEnterpriseSignature(){
     const doc=await PDFLib.PDFDocument.load(bytes,{updateFieldAppearances:false});
     const page=doc.getPages()[0];
     const png=await doc.embedPng(signatureCanvas.toDataURL('image/png'));
-    // Case Entreprise du PDF original : x=349..527, y=766..806 (origine PDF en bas à gauche).
-    page.drawImage(png,{x:350,y:36,width:175,height:68,opacity:1});
+    const boxes={
+      locataire:{x:52,y:36,width:200,height:68},
+      gestionnaire:{x:257,y:36,width:90,height:68},
+      entreprise:{x:350,y:36,width:175,height:68}
+    };
+    page.drawImage(png,{...boxes[signatureRole]||boxes.entreprise,opacity:1});
     const signed=await doc.save({updateFieldAppearances:false});
     const signedPath=`${signatureLogementId}/signed-${Date.now()}-${pdf.original_filename.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
     const blob=new Blob([signed],{type:'application/pdf'});
     const {error:ue}=await supabaseClient.storage.from('glen-documents').upload(signedPath,blob,{contentType:'application/pdf',upsert:false}); if(ue)throw ue;
     const {error:up}=await supabaseClient.from('pdf_documents').update({storage_path:signedPath,updated_at:new Date().toISOString()}).eq('id',pdf.id); if(up){await supabaseClient.storage.from('glen-documents').remove([signedPath]);throw up;}
     await supabaseClient.storage.from('glen-documents').remove([pdf.storage_path]);
-    msg.className='ok';msg.textContent='Signature Entreprise enregistrée dans le PDF.';
-    // Ne recharge pas le logement après la signature.
-    // La signature est déjà enregistrée dans Supabase.
+    msg.className='ok';msg.textContent=`Signature ${label} enregistrée dans le PDF.`;
     setTimeout(()=>{
       closeSignature();
       const notice=document.getElementById('notice');
-      if(notice){ notice.className='ok'; notice.textContent='✅ Signature Entreprise enregistrée dans le PDF.'; }
+      if(notice){notice.className='ok';notice.textContent=`✅ Signature ${label} enregistrée dans le PDF.`;}
     },700);
   }catch(e){msg.className='error';msg.textContent='Erreur : '+(e?.message||e);}
 }
