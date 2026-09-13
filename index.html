@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#203a5d">
-<title>GLEN V8.9</title>
+<title>GLEN V10</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
@@ -238,17 +238,17 @@ async function openChantier(id){
   const {data:l}=await supabaseClient.from("logements").select("*").eq("chantier_id",id).order("created_at");
   const {data:a}=await supabaseClient.from("chantier_poseurs").select("poseur_id, profiles(id,email,full_name)").eq("chantier_id",id);
   const {data:p}=await supabaseClient.from("profiles").select("id,email,full_name").eq("role","poseur").order("email");
-  const total=(l||[]).length, done=(l||[]).filter(x=>x.statut==='Terminé').length, todo=total-done;
+  const total=(l||[]).length, done=(l||[]).filter(x=>x.statut==='Terminé').length, enCours=(l||[]).filter(x=>x.statut==='En cours').length, todo=total-done-enCours;
   const poseurIds=[...(new Set((l||[]).map(x=>x.termine_par).filter(Boolean)))];
   let termineProfiles={};
   if(poseurIds.length){ const {data:tp}=await supabaseClient.from("profiles").select("id,email,full_name").in("id",poseurIds); (tp||[]).forEach(x=>termineProfiles[x.id]=x); }
-  const logementHtml=(x)=>{ const pr=x.termine_par?termineProfiles[x.termine_par]:null; return `<div class="item logement-item" data-statut="${x.statut==='Terminé'?'termine':'afaire'}"><div class="row" style="justify-content:space-between;align-items:center"><b>${esc(x.nom||"Logement")}</b><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p>${x.statut==='Terminé'?`<p class="done-note">✅ Terminé le ${x.termine_at?new Date(x.termine_at).toLocaleString('fr-FR'):''}${pr?` par ${esc(pr.full_name||pr.email)}`:''}</p>`:''}<div class="row"><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button><button class="btn" onclick="exportLogementDossier('${x.id}')">📦 Exporter le dossier</button>${x.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${x.id}','À faire')">↩️ Rouvrir</button>`:''}</div></div>`; };
+  const logementHtml=(x)=>{ const pr=x.termine_par?termineProfiles[x.termine_par]:null; const isDone=x.statut==='Terminé'; const isDoing=x.statut==='En cours'; const badgeClass=isDone?'status-done':isDoing?'status-todo':'status-todo'; const badge=isDone?'✅ Terminé':isDoing?'🔵 En cours':'⏳ À faire'; return `<div class="item logement-item" data-statut="${isDone?'termine':isDoing?'encours':'afaire'}"><div class="row" style="justify-content:space-between;align-items:center"><b>${esc(x.nom||"Logement")}</b><span class="status-badge ${badgeClass}">${badge}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p>${isDone?`<p class="done-note">✅ Terminé le ${x.termine_at?new Date(x.termine_at).toLocaleString('fr-FR'):''}${pr?` par ${esc(pr.full_name||pr.email)}`:''}</p>`:''}<div class="row"><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button><button class="btn" onclick="exportLogementDossier('${x.id}')">📦 Exporter le dossier</button>${isDone?`<button class="btn secondary" onclick="setLogementStatus('${x.id}','À faire')">↩️ Rouvrir</button>`:isDoing?`<button class="btn secondary" onclick="setLogementStatus('${x.id}','À faire')">↩️ Remettre à faire</button>`:''}</div></div>`; };
   app.innerHTML=`<div class="card">
     <div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button><button class="btn" onclick="exportChantierDossier('${id}')">📦 Exporter le chantier</button></div>
     <h2>${esc(c.nom)}</h2>
-    <div class="progress-stats"><div><b>${total}</b><span>Total logements</span></div><div><b>${todo}</b><span>⏳ À faire</span></div><div><b>${done}</b><span>✅ Terminés</span></div></div>
+    <div class="progress-stats"><div><b>${total}</b><span>Total logements</span></div><div><b>${todo}</b><span>⏳ À faire</span></div><div><b>${enCours}</b><span>🔵 En cours</span></div><div><b>${done}</b><span>✅ Terminés</span></div></div>
     <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Logements</h3><label class="btn" style="display:inline-block;text-align:center">📥 Importer Excel<input id="excelInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewExcel('${id}',this.files[0])"></label></div>
-    <div class="row filter-row"><button class="btn filter-btn" onclick="filterLogements('tous',this)">Tous (${total})</button><button class="btn secondary filter-btn" onclick="filterLogements('afaire',this)">⏳ À faire (${todo})</button><button class="btn secondary filter-btn" onclick="filterLogements('termine',this)">✅ Terminés (${done})</button></div>
+    <div class="row filter-row"><button class="btn filter-btn" onclick="filterLogements('tous',this)">Tous (${total})</button><button class="btn secondary filter-btn" onclick="filterLogements('afaire',this)">⏳ À faire (${todo})</button><button class="btn secondary filter-btn" onclick="filterLogements('encours',this)">🔵 En cours (${enCours})</button><button class="btn secondary filter-btn" onclick="filterLogements('termine',this)">✅ Terminés (${done})</button></div>
     <p class="small">L'import se fait dans ce chantier. Les logements seront associés automatiquement à <b>${esc(c.nom)}</b>.</p>
     <div id="logementsList">${l?.length?l.map(logementHtml).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}</div>
     <div id="importArea"></div>
@@ -335,13 +335,15 @@ async function poseurHome(){
     </div>
     <div class="progress-stats" style="grid-template-columns:repeat(3,1fr)">
       <div><b>${logements.length}</b><span>Total</span></div>
-      <div><b>${logements.filter(x=>x.statut!=='Terminé').length}</b><span>⏳ À faire</span></div>
+      <div><b>${logements.filter(x=>x.statut!=='Terminé'&&x.statut!=='En cours').length}</b><span>⏳ À faire</span></div>
+      <div><b>${logements.filter(x=>x.statut==='En cours').length}</b><span>🔵 En cours</span></div>
       <div><b>${logements.filter(x=>x.statut==='Terminé').length}</b><span>✅ Terminés</span></div>
     </div>
     <input id="poseurSearch" type="search" placeholder="🔎 Rechercher nom, adresse ou numéro de logement…" oninput="renderPoseurLogements()">
     <div class="row filter-row">
       <button class="btn filter-btn" onclick="setPoseurFilter('all')">Tous</button>
       <button class="btn secondary filter-btn" onclick="setPoseurFilter('todo')">⏳ À faire</button>
+      <button class="btn secondary filter-btn" onclick="setPoseurFilter('doing')">🔵 En cours</button>
       <button class="btn secondary filter-btn" onclick="setPoseurFilter('done')">✅ Terminés</button>
     </div>
     <div id="poseurLogementList"></div>
@@ -352,7 +354,7 @@ function setPoseurFilter(f){
   window.poseurFilter=f;
   document.querySelectorAll('.filter-btn').forEach(b=>{b.classList.remove('active');b.classList.add('secondary');});
   const buttons=document.querySelectorAll('.filter-btn');
-  const index=f==='all'?0:f==='todo'?1:2;
+  const index=f==='all'?0:f==='todo'?1:f==='doing'?2:3;
   if(buttons[index]){buttons[index].classList.remove('secondary');buttons[index].classList.add('active'); buttons.forEach((b,i)=>{b.style.background=i===index?'#2375b9':'#e8eef4'; b.style.color=i===index?'#fff':'#203a5d';});}
   renderPoseurLogements();
 }
@@ -362,12 +364,12 @@ function renderPoseurLogements(){
   const f=window.poseurFilter||'all';
   let data=(window.poseurLogements||[]).filter(x=>{
     const hay=[x.nom,x.adresse,x.n_log,x.code,x.commune,x.batiment,x.etage,x.type,x.chantier_nom].filter(Boolean).join(' ').toLowerCase();
-    const status=f==='done' ? x.statut==='Terminé' : f==='todo' ? x.statut!=='Terminé' : true;
+    const status=f==='done' ? x.statut==='Terminé' : f==='todo' ? (x.statut!=='Terminé' && x.statut!=='En cours') : f==='doing' ? x.statut==='En cours' : true;
     return status && (!q || hay.includes(q));
   });
   const groups={}; data.forEach(x=>(groups[x.chantier_nom]??=[]).push(x));
   if(!data.length){list.innerHTML='<p class="small">Aucun logement correspondant.</p>';return;}
-  list.innerHTML=Object.entries(groups).map(([chantier,items])=>`<div style="margin-top:18px"><h3 style="margin-bottom:8px">🏗️ ${esc(chantier)}</h3>${items.map(x=>`<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">${esc(x.nom||"Logement")}</h3><p>${esc(x.adresse||"")}</p>${x.n_log?`<p class="small">N° logement : ${esc(x.n_log)}</p>`:''}</div><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><button class="btn" onclick="openLogement('${x.id}')">Ouvrir le logement</button></div>`).join('')}</div>`).join('');
+  list.innerHTML=Object.entries(groups).map(([chantier,items])=>`<div style="margin-top:18px"><h3 style="margin-bottom:8px">🏗️ ${esc(chantier)}</h3>${items.map(x=>`<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">${esc(x.nom||"Logement")}</h3><p>${esc(x.adresse||"")}</p>${x.n_log?`<p class="small">N° logement : ${esc(x.n_log)}</p>`:''}</div><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':x.statut==='En cours'?'🔵 En cours':'⏳ À faire'}</span></div><div class="row"><button class="btn" onclick="openLogement('${x.id}')">Ouvrir le logement</button>${x.statut!=='Terminé'&&x.statut!=='En cours'?`<button class="btn secondary" onclick="setLogementStatus('${x.id}','En cours')">▶️ Commencer</button>`:''}</div></div>`).join('')}</div>`).join('');
 }
 async function poseurChantier(id){
   const {data:c}=await supabaseClient.from("chantiers").select("*").eq("id",id).single();
@@ -407,12 +409,12 @@ async function openLogement(id,mode='poseur'){
 
 async function setLogementStatus(logementId,status){
   const msg=document.getElementById('statusMsg');
-  const label=status==='Terminé'?'terminé':'à faire';
+  const label=status==='Terminé'?'terminé':status==='En cours'?'en cours':'à faire';
   if(status==='Terminé' && !confirm('Confirmer que ce logement est terminé ?')) return;
   if(msg){msg.className='small';msg.textContent='Enregistrement…';}
   try{
     const user=(await supabaseClient.auth.getUser()).data.user;
-    const payload=status==='Terminé'?{statut:'Terminé',termine_at:new Date().toISOString(),termine_par:user.id}:{statut:'À faire',termine_at:null,termine_par:null};
+    const payload=status==='Terminé'?{statut:'Terminé',termine_at:new Date().toISOString(),termine_par:user.id}:status==='En cours'?{statut:'En cours',termine_at:null,termine_par:null}:{statut:'À faire',termine_at:null,termine_par:null};
     const {error}=await supabaseClient.from('logements').update(payload).eq('id',logementId);
     if(error)throw error;
     await openLogement(logementId,currentProfile?.role==='admin'?'admin':'poseur');
