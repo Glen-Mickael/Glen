@@ -15,6 +15,7 @@ input{width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;font-s
 .item{border:1px solid #dce3e9;border-radius:14px;padding:15px;margin:10px 0}.item h3{margin:0 0 5px}.item p{margin:4px 0}
 .badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#e9f1f8;color:#203a5d;font-size:13px;font-weight:700}
 .hidden{display:none!important}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:12px}.photo-card{border:1px solid #dce3e9;border-radius:12px;padding:8px;background:#fff}.photo-card img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:9px;display:block}.photo-card .small{font-size:12px;margin:6px 0}.file-label{display:inline-block}
 label{font-weight:600}
 hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 #app{min-height:70vh}
@@ -112,7 +113,7 @@ async function openChantier(id){
     <h2>${esc(c.nom)}</h2>
     <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Logements</h3><label class="btn" style="display:inline-block;text-align:center">📥 Importer Excel<input id="excelInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewExcel('${id}',this.files[0])"></label></div>
     <p class="small">L'import se fait dans ce chantier. Les logements seront associés automatiquement à <b>${esc(c.nom)}</b>.</p>
-    ${l?.length?l.map(x=>`<div class="item"><b>${esc(x.nom||"Logement")}</b><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
+    ${l?.length?l.map(x=>`<div class="item"><b>${esc(x.nom||"Logement")}</b><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Voir les photos</button></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
     <div id="importArea"></div>
     <hr><h3>Poseurs autorisés sur ce chantier</h3>
     <select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin-bottom:10px">
@@ -185,13 +186,67 @@ async function poseurChantier(id){
   ${l?.length?l.map(x=>`<div class="item"><h3>${esc(x.nom||"Logement")}</h3><p>${esc(x.adresse||"")}</p><button class="btn" onclick="openLogement('${x.id}')">Ouvrir</button></div>`).join(""):"<p class='small'>Aucun logement disponible.</p>"}
   </div>`;
 }
-async function openLogement(id){
-  const {data:l}=await supabaseClient.from("logements").select("*").eq("id",id).single();
-  app.innerHTML=`<div class="card"><button class="btn secondary" onclick="poseurChantier('${l.chantier_id}')">← Retour</button>
-  <h2>${esc(l.nom||"Logement")}</h2><p>${esc(l.adresse||"")}</p>
-  <hr><h3>Photos</h3>
-  <p class="small">Le module photo sera activé à l'étape suivante. Ici, on valide d'abord les droits Administrateur / Poseur.</p></div>`;
+async function openLogement(id,mode='poseur'){
+  const {data:l,error}=await supabaseClient.from("logements").select("*").eq("id",id).single();
+  if(error||!l){set("Logement introuvable.","error");return;}
+  const {data:photos,error:pe}=await supabaseClient.from("photos").select("*").eq("logement_id",id).order("created_at",{ascending:false});
+  if(pe){set("Erreur photos : "+esc(pe.message),"error");return;}
+  const back=mode==='admin'?`openChantier('${l.chantier_id}')`:`poseurChantier('${l.chantier_id}')`;
+  app.innerHTML=`<div class="card">
+    <div class="row"><button class="btn secondary" onclick="${back}">← Retour</button>${mode==='admin'?'<span class="badge">ADMINISTRATEUR</span>':'<span class="badge">POSEUR</span>'}</div>
+    <h2>${esc(l.nom||"Logement")}</h2><p>${esc(l.adresse||"")}</p>
+    <hr><h3>Photos</h3>
+    ${mode==='poseur'?`<div class="row">
+      <label class="btn file-label">📷 Prendre une photo<input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadPhoto('${l.id}',this.files[0])"></label>
+      <label class="btn secondary file-label">🖼️ Ajouter une photo<input id="photoInput" type="file" accept="image/*" multiple style="display:none" onchange="uploadPhotos('${l.id}',this.files)"></label>
+    </div><p class="small">Les photos sont automatiquement enregistrées dans ce logement et visibles par l'administrateur.</p>`:'<p class="small">Photos prises par le poseur sur ce logement.</p>'}
+    <div id="photoMsg"></div>
+    <div id="photoGrid" class="photo-grid">${renderPhotos(photos||[],mode)}</div>
+  </div>`;
 }
+function renderPhotos(photos,mode){
+  if(!photos.length)return '<p class="small">Aucune photo pour le moment.</p>';
+  return photos.map(p=>`<div class="photo-card"><img src="${esc(p.public_url)}" alt="Photo logement"><div class="small">${new Date(p.created_at).toLocaleString('fr-FR')}</div>${mode==='poseur'?`<button class="btn danger" style="width:100%;padding:9px 12px;font-size:14px" onclick="deletePhoto('${p.id}','${esc(p.storage_path)}','${p.logement_id}')">Supprimer</button>`:''}</div>`).join('');
+}
+async function uploadPhoto(logementId,file){
+  if(!file)return;
+  await uploadPhotos(logementId,[file]);
+}
+async function uploadPhotos(logementId,files){
+  const msg=document.getElementById('photoMsg');
+  if(!files||!files.length)return;
+  if(msg)msg.className='small'; if(msg)msg.textContent='Préparation de la photo…';
+  try{
+    const user=(await supabaseClient.auth.getUser()).data.user;
+    for(const file of Array.from(files)){
+      const blob=await compressImage(file);
+      const path=`${logementId}/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+      const {error:ue}=await supabaseClient.storage.from('glen-photos').upload(path,blob,{contentType:'image/jpeg',upsert:false});
+      if(ue)throw ue;
+      const {data:urlData}=supabaseClient.storage.from('glen-photos').getPublicUrl(path);
+      const {error:ie}=await supabaseClient.from('photos').insert({logement_id:logementId,storage_path:path,public_url:urlData.publicUrl,user_id:user.id});
+      if(ie){await supabaseClient.storage.from('glen-photos').remove([path]);throw ie;}
+    }
+    if(msg){msg.className='ok';msg.textContent='Photo(s) enregistrée(s).';}
+    await openLogement(logementId,'poseur');
+  }catch(e){if(msg){msg.className='error';msg.textContent='Erreur : '+e.message;}}
+}
+function compressImage(file){
+  return new Promise((resolve,reject)=>{
+    const img=new Image(),url=URL.createObjectURL(file);
+    img.onload=()=>{URL.revokeObjectURL(url);const max=1600;let w=img.naturalWidth,h=img.naturalHeight;if(w>max||h>max){const r=Math.min(max/w,max/h);w=Math.round(w*r);h=Math.round(h*r);}const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');ctx.drawImage(img,0,0,w,h);c.toBlob(b=>b?resolve(b):reject(new Error('Compression impossible')),'image/jpeg',0.82);};
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Image illisible'));};img.src=url;
+  });
+}
+async function deletePhoto(photoId,path,logementId){
+  if(!confirm('Supprimer cette photo ?'))return;
+  const {error:se}=await supabaseClient.storage.from('glen-photos').remove([path]);
+  if(se){alert(se.message);return;}
+  const {error:de}=await supabaseClient.from('photos').delete().eq('id',photoId);
+  if(de){alert(de.message);return;}
+  await openLogement(logementId,'poseur');
+}
+
 init();
 </script>
 </body>
