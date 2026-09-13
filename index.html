@@ -20,7 +20,7 @@ label{font-weight:600}
 hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 #app{min-height:70vh}.fill-field{display:block;margin:10px 0}.fill-field>span{display:block;font-weight:700;font-size:14px;margin-bottom:5px}.fill-field input[type=text],.fill-field select{width:100%;padding:10px;border:1px solid #c9d3dc;border-radius:8px;font-size:16px;background:#fff}.checkbox-field{display:flex;align-items:center;gap:10px;padding:8px 0}.checkbox-field span{margin:0}.checkbox-field input{width:20px;height:20px}
 .modal-backdrop{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:14px;z-index:1000}.modal{background:#fff;border-radius:18px;max-width:760px;width:100%;padding:18px;box-shadow:0 15px 50px #0005}.sig-wrap{border:2px dashed #9aa8b5;border-radius:12px;background:#fff;touch-action:none}.sig-wrap canvas{width:100%;height:220px;display:block;border-radius:10px;touch-action:none}.sig-note{font-size:13px;color:#66727e;margin:8px 0}.modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
-</style>
+.status-badge{display:inline-block;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#eef2f7;color:#334155}.status-done{background:#dcfce7;color:#166534}.status-todo{background:#fef3c7;color:#92400e}.validate-box{margin-top:16px;padding:14px;border:1px solid #dbe3ea;border-radius:12px;background:#f8fafc}.validate-box h3{margin-top:0}.done-note{font-size:13px;color:#166534;margin-top:8px}</style>
 <style>
 .work-checks{margin-top:24px}
 .work-checks h3{font-size:22px;margin:0 0 12px}
@@ -181,7 +181,7 @@ async function openChantier(id){
     <h2>${esc(c.nom)}</h2>
     <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Logements</h3><label class="btn" style="display:inline-block;text-align:center">📥 Importer Excel<input id="excelInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewExcel('${id}',this.files[0])"></label></div>
     <p class="small">L'import se fait dans ce chantier. Les logements seront associés automatiquement à <b>${esc(c.nom)}</b>.</p>
-    ${l?.length?l.map(x=>`<div class="item"><b>${esc(x.nom||"Logement")}</b><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
+    ${l?.length?l.map(x=>`<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><b>${esc(x.nom||"Logement")}</b><span class="status-badge ${x.status==='termine'?'status-done':'status-todo'}">${x.status==='termine'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
     <div id="importArea"></div>
     <hr><h3>Poseurs autorisés sur ce chantier</h3>
     <select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin-bottom:10px">
@@ -251,7 +251,7 @@ async function poseurChantier(id){
   if(error){set("Erreur : "+esc(error.message),"error");return;}
   app.innerHTML=`<div class="card"><button class="btn secondary" onclick="poseurHome()">← Retour</button>
   <h2>${esc(c.nom)}</h2><h3>Logements</h3>
-  ${l?.length?l.map(x=>`<div class="item"><h3>${esc(x.nom||"Logement")}</h3><p>${esc(x.adresse||"")}</p><button class="btn" onclick="openLogement('${x.id}')">Ouvrir</button></div>`).join(""):"<p class='small'>Aucun logement disponible.</p>"}
+  ${l?.length?l.map(x=>`<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">${esc(x.nom||"Logement")}</h3><span class="status-badge ${x.status==='termine'?'status-done':'status-todo'}">${x.status==='termine'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><button class="btn" onclick="openLogement('${x.id}')">Ouvrir</button></div>`).join(""):"<p class='small'>Aucun logement disponible.</p>"}
   </div>`;
 }
 async function openLogement(id,mode='poseur'){
@@ -270,6 +270,7 @@ async function openLogement(id,mode='poseur'){
     <div id="pdfMsg"></div>
     ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="openPdf('${pdf.id}')">📄 Ouvrir le PDF</button>${mode==='admin'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir / Enregistrer</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Entreprise</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Locataire</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:''}</div></div>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
     <p class="small">Le fichier est conservé comme PDF original, sans modification ni changement de mise en page.</p>
+    <hr><div class="validate-box"><h3>📋 État du logement</h3><div class="status-badge ${l.status==='termine'?'status-done':'status-todo'}">${l.status==='termine'?'✅ Logement terminé':'⏳ Logement à faire'}</div>${l.status==='termine'&&l.completed_at?`<div class="done-note">Terminé le ${new Date(l.completed_at).toLocaleString('fr-FR')}</div>`:''}${mode==='poseur'?`<div style="margin-top:12px">${l.status==='termine'?`<button class="btn secondary" onclick="setLogementStatus('${l.id}','a_faire')">↩️ Rouvrir le logement</button>`:`<button class="btn" onclick="setLogementStatus('${l.id}','termine')">✅ Terminer / Valider le logement</button>`}</div><p class="small">À utiliser uniquement lorsque les photos et le dossier du logement sont terminés.</p>`:''}${mode==='admin'&&l.status==='termine'?`<div style="margin-top:12px"><button class="btn secondary" onclick="setLogementStatus('${l.id}','a_faire')">↩️ Rouvrir le logement</button></div>`:''}<div id="statusMsg"></div></div>
     <hr><h3>Photos</h3>
     ${mode==='poseur'?`<div class="row">
       <label class="btn file-label">📷 Prendre une photo<input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadPhoto('${l.id}',this.files[0])"></label>
@@ -278,6 +279,20 @@ async function openLogement(id,mode='poseur'){
     <div id="photoMsg"></div>
     <div id="photoGrid" class="photo-grid">${renderPhotos(photos||[],mode)}</div>
   </div>`;
+}
+
+async function setLogementStatus(logementId,status){
+  const msg=document.getElementById('statusMsg');
+  const label=status==='termine'?'terminé':'à faire';
+  if(status==='termine' && !confirm('Confirmer que ce logement est terminé ?')) return;
+  if(msg){msg.className='small';msg.textContent='Enregistrement…';}
+  try{
+    const user=(await supabaseClient.auth.getUser()).data.user;
+    const payload=status==='termine'?{status:'termine',completed_at:new Date().toISOString(),completed_by:user.id}:{status:'a_faire',completed_at:null,completed_by:null};
+    const {error}=await supabaseClient.from('logements').update(payload).eq('id',logementId);
+    if(error)throw error;
+    await openLogement(logementId,currentProfile?.role==='admin'?'admin':'poseur');
+  }catch(e){if(msg){msg.className='error';msg.textContent='Erreur : '+e.message;}else alert(e.message);}
 }
 
 async function uploadPdf(logementId,file){
@@ -409,7 +424,7 @@ const HIDDEN_FIXED_FIELDS=new Set(["1","Numéro locataire","Text2","Text3","Text
 let fillPdfId=null, fillLogementId=null, fillDoc=null, fillForm=null;
 async function openFillPdf(pdfId,logementId){
   fillPdfId=pdfId; fillLogementId=logementId;
-  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <small style="font-size:12px;font-weight:600;opacity:.55">V7.11</small></h2><p class="sig-note">Les champs sont présentés avec leur utilité pour éviter les noms techniques du PDF. La mise en page du PDF original et les signatures déjà enregistrées sont conservées.</p><div id="fillMsg" class="small">Chargement des champs…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <small style="font-size:12px;font-weight:600;opacity:.55">V8</small></h2><p class="sig-note">Les champs sont présentés avec leur utilité pour éviter les noms techniques du PDF. La mise en page du PDF original et les signatures déjà enregistrées sont conservées.</p><div id="fillMsg" class="small">Chargement des champs…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
   try{
     const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single();
     if(error||!pdf)throw error||new Error('PDF introuvable.');
