@@ -156,15 +156,32 @@ async function loadProfile(){
 async function adminHome(){
   const {data:chantiers,error}=await supabaseClient.from("chantiers").select("*").order("created_at",{ascending:false});
   if(error){set("Erreur : "+esc(error.message),"error");return;}
+  const chantierIds=(chantiers||[]).map(c=>c.id);
+  let logements=[];
+  if(chantierIds.length){
+    const {data:l,error:le}=await supabaseClient.from("logements").select("id,chantier_id,statut").in("chantier_id",chantierIds);
+    if(le){set("Erreur : "+esc(le.message),"error");return;}
+    logements=l||[];
+  }
+  const stats={};
+  (chantiers||[]).forEach(c=>{stats[c.id]={total:0,done:0};});
+  logements.forEach(l=>{if(!stats[l.chantier_id])stats[l.chantier_id]={total:0,done:0};stats[l.chantier_id].total++;if(l.statut==='Terminé')stats[l.chantier_id].done++;});
+  const totalAll=logements.length, doneAll=logements.filter(x=>x.statut==='Terminé').length, todoAll=totalAll-doneAll;
+  const pctAll=totalAll?Math.round(doneAll*100/totalAll):0;
   app.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between">
     <div><span class="badge">ADMINISTRATEUR</span><h2>Mes chantiers</h2></div>
     <button class="btn secondary" onclick="logout()">Déconnexion</button>
   </div>
+  <div class="progress-stats"><div><b>${(chantiers||[]).length}</b><span>🏗️ Chantiers</span></div><div><b>${totalAll}</b><span>🏠 Logements</span></div><div><b>${doneAll}</b><span>✅ Terminés</span></div><div><b>${todoAll}</b><span>⏳ À faire</span></div></div>
+  <div class="item" style="margin-bottom:16px"><div class="row" style="justify-content:space-between"><b>Avancement global</b><b>${pctAll}%</b></div><div style="height:14px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:8px"><div style="height:100%;width:${pctAll}%;background:#16a34a;border-radius:999px"></div></div><p class="small">${doneAll} logement${doneAll>1?'s':''} terminé${doneAll>1?'s':''} sur ${totalAll}</p></div>
   <button class="btn" onclick="newChantier()">+ Nouveau chantier</button>
-  <div id="list">${chantiers?.length?chantiers.map(c=>`<div class="item">
-    <h3>${esc(c.nom)}</h3><p class="small">Créé le ${new Date(c.created_at).toLocaleDateString("fr-FR")}</p>
-    <div class="row"><button class="btn" onclick="openChantier('${c.id}')">Ouvrir</button></div>
-  </div>`).join(""):"<p class='small'>Aucun chantier créé.</p>"}</div></div>`;
+  <div id="list">${chantiers?.length?chantiers.map(c=>{const s=stats[c.id]||{total:0,done:0};const todo=s.total-s.done;const pct=s.total?Math.round(s.done*100/s.total):0;return `<div class="item">
+    <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">${esc(c.nom)}</h3><span class="status-badge ${pct===100&&s.total?'status-done':'status-todo'}">${pct===100&&s.total?'✅ Terminé':'⏳ En cours'}</span></div>
+    <p class="small">Créé le ${new Date(c.created_at).toLocaleDateString("fr-FR")}</p>
+    <div class="row" style="justify-content:space-between"><span>🏠 ${s.total} logements</span><span>✅ ${s.done} terminés</span><span>⏳ ${todo} à faire</span><b>${pct}%</b></div>
+    <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:8px 0 12px"><div style="height:100%;width:${pct}%;background:#16a34a;border-radius:999px"></div></div>
+    <div class="row"><button class="btn" onclick="openChantier('${c.id}')">Ouvrir le chantier</button></div>
+  </div>`;}).join(""):"<p class='small'>Aucun chantier créé.</p>"}</div></div>`;
 }
 async function newChantier(){
   const nom=prompt("Nom du chantier");
