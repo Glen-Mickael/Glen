@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#203a5d">
-<title>GLEN V8.8.1</title>
+<title>GLEN V8.9</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
@@ -196,11 +196,7 @@ async function managePoseurs(){
       <h3>➕ Nouveau poseur</h3>
       <label>Nom / prénom</label><input id="newPoseurName" type="text" placeholder="Ex. Damien Dumas" autocomplete="name">
       <label>Email</label><input id="newPoseurEmail" type="email" placeholder="poseur@glen.fr" autocomplete="email">
-      <label>Mot de passe provisoire</label>
-      <div style="position:relative">
-        <input id="newPoseurPassword" type="password" placeholder="Minimum 8 caractères" autocomplete="new-password" style="padding-right:52px">
-        <button type="button" onclick="togglePoseurPassword()" aria-label="Afficher ou masquer le mot de passe" style="position:absolute;right:8px;top:6px;border:0;background:#e8eef4;border-radius:8px;padding:9px 11px;cursor:pointer;font-size:18px">👁️</button>
-      </div>
+      <label>Mot de passe provisoire</label><input id="newPoseurPassword" type="password" placeholder="Minimum 8 caractères" autocomplete="new-password">
       <button class="btn" onclick="createPoseur()">➕ Créer le compte poseur</button>
       <div id="poseurCreateMsg"></div>
     </div>
@@ -210,12 +206,6 @@ async function managePoseurs(){
     </div>
     <div class="item" style="background:#fff8e6"><b>🔐 Sécurité</b><p class="small">La création du compte passe par une fonction sécurisée Supabase. La clé secrète n'est jamais envoyée au navigateur.</p></div>
   </div>`;
-}
-
-function togglePoseurPassword(){
-  const input=document.getElementById('newPoseurPassword');
-  if(!input) return;
-  input.type=input.type==='password'?'text':'password';
 }
 
 async function createPoseur(){
@@ -228,7 +218,7 @@ async function createPoseur(){
   msg.className='small';msg.textContent='Création du compte…';
   const {data,error}=await supabaseClient.functions.invoke('create-poseur',{body:{email, password, full_name}});
   if(error){msg.className='error';msg.textContent='Erreur : '+(error.message||error);return;}
-  if(!data?.ok && !data?.success){msg.className='error';msg.textContent='Erreur : '+(data?.error||data?.message||'Création impossible.');return;}
+  if(!data?.ok){msg.className='error';msg.textContent='Erreur : '+(data?.error||'Création impossible.');return;}
   msg.className='ok';msg.textContent='Poseur créé : '+email;
   document.getElementById('newPoseurName').value='';
   document.getElementById('newPoseurEmail').value='';
@@ -329,20 +319,57 @@ async function validateImport(){
 async function poseurHome(){
   const {data:rows,error}=await supabaseClient.from("chantier_poseurs").select("chantier_id,chantiers(id,nom)");
   if(error){set("Erreur : "+esc(error.message),"error");return;}
-  app.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between">
-    <div><span class="badge">POSEUR</span><h2>Mes chantiers</h2></div>
-    <button class="btn secondary" onclick="logout()">Déconnexion</button>
-  </div>
-  ${rows?.length?rows.map(r=>`<div class="item"><h3>${esc(r.chantiers?.nom)}</h3><button class="btn" onclick="poseurChantier('${r.chantiers?.id}')">Ouvrir</button></div>`).join(""):"<p class='small'>Aucun chantier ne vous a été attribué.</p>"}</div>`;
+  const ids=(rows||[]).map(r=>r.chantier_id).filter(Boolean);
+  let logements=[];
+  if(ids.length){
+    const {data:l,error:le}=await supabaseClient.from("logements").select("*").in("chantier_id",ids).order("created_at");
+    if(le){set("Erreur : "+esc(le.message),"error");return;}
+    const names={}; (rows||[]).forEach(r=>names[r.chantier_id]=r.chantiers?.nom||"Chantier");
+    logements=(l||[]).map(x=>({...x,chantier_nom:names[x.chantier_id]||"Chantier"}));
+  }
+  window.poseurLogements=logements;
+  app.innerHTML=`<div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div><span class="badge">POSEUR</span><h2>🏠 Mes logements</h2></div>
+      <button class="btn secondary" onclick="logout()">Déconnexion</button>
+    </div>
+    <div class="progress-stats" style="grid-template-columns:repeat(3,1fr)">
+      <div><b>${logements.length}</b><span>Total</span></div>
+      <div><b>${logements.filter(x=>x.statut!=='Terminé').length}</b><span>⏳ À faire</span></div>
+      <div><b>${logements.filter(x=>x.statut==='Terminé').length}</b><span>✅ Terminés</span></div>
+    </div>
+    <input id="poseurSearch" type="search" placeholder="🔎 Rechercher nom, adresse ou numéro de logement…" oninput="renderPoseurLogements()">
+    <div class="row filter-row">
+      <button class="btn filter-btn" onclick="setPoseurFilter('all')">Tous</button>
+      <button class="btn secondary filter-btn" onclick="setPoseurFilter('todo')">⏳ À faire</button>
+      <button class="btn secondary filter-btn" onclick="setPoseurFilter('done')">✅ Terminés</button>
+    </div>
+    <div id="poseurLogementList"></div>
+  </div>`;
+  window.poseurFilter='all'; renderPoseurLogements();
+}
+function setPoseurFilter(f){window.poseurFilter=f; renderPoseurLogements();}
+function renderPoseurLogements(){
+  const list=document.getElementById('poseurLogementList'); if(!list)return;
+  const q=(document.getElementById('poseurSearch')?.value||'').trim().toLowerCase();
+  const f=window.poseurFilter||'all';
+  let data=(window.poseurLogements||[]).filter(x=>{
+    const hay=[x.nom,x.adresse,x.n_log,x.code,x.commune,x.batiment,x.etage,x.type,x.chantier_nom].filter(Boolean).join(' ').toLowerCase();
+    const status=f==='done' ? x.statut==='Terminé' : f==='todo' ? x.statut!=='Terminé' : true;
+    return status && (!q || hay.includes(q));
+  });
+  const groups={}; data.forEach(x=>(groups[x.chantier_nom]??=[]).push(x));
+  if(!data.length){list.innerHTML='<p class="small">Aucun logement correspondant.</p>';return;}
+  list.innerHTML=Object.entries(groups).map(([chantier,items])=>`<div style="margin-top:18px"><h3 style="margin-bottom:8px">🏗️ ${esc(chantier)}</h3>${items.map(x=>`<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><div><h3 style="margin:0">${esc(x.nom||"Logement")}</h3><p>${esc(x.adresse||"")}</p>${x.n_log?`<p class="small">N° logement : ${esc(x.n_log)}</p>`:''}</div><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><button class="btn" onclick="openLogement('${x.id}')">Ouvrir le logement</button></div>`).join('')}</div>`).join('');
 }
 async function poseurChantier(id){
   const {data:c}=await supabaseClient.from("chantiers").select("*").eq("id",id).single();
+  if(!c){set("Chantier introuvable.","error");return;}
   const {data:l,error}=await supabaseClient.from("logements").select("*").eq("chantier_id",id).order("created_at");
   if(error){set("Erreur : "+esc(error.message),"error");return;}
-  app.innerHTML=`<div class="card"><button class="btn secondary" onclick="poseurHome()">← Retour</button>
-  <h2>${esc(c.nom)}</h2><h3>Logements</h3>
-  ${l?.length?l.map(x=>`<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">${esc(x.nom||"Logement")}</h3><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><button class="btn" onclick="openLogement('${x.id}')">Ouvrir</button></div>`).join(""):"<p class='small'>Aucun logement disponible.</p>"}
-  </div>`;
+  window.poseurLogements=(l||[]).map(x=>({...x,chantier_nom:c.nom||"Chantier"}));
+  app.innerHTML=`<div class="card"><button class="btn secondary" onclick="poseurHome()">← Mes logements</button><h2>${esc(c.nom)}</h2><div id="poseurLogementList"></div></div>`;
+  window.poseurFilter='all'; renderPoseurLogements();
 }
 async function openLogement(id,mode='poseur'){
   const {data:l,error}=await supabaseClient.from("logements").select("*").eq("id",id).single();
