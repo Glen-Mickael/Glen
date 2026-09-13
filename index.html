@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#203a5d">
-<title>GLEN V8.8</title>
+<title>GLEN V8.8.1</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
@@ -196,7 +196,11 @@ async function managePoseurs(){
       <h3>➕ Nouveau poseur</h3>
       <label>Nom / prénom</label><input id="newPoseurName" type="text" placeholder="Ex. Damien Dumas" autocomplete="name">
       <label>Email</label><input id="newPoseurEmail" type="email" placeholder="poseur@glen.fr" autocomplete="email">
-      <label>Mot de passe provisoire</label><input id="newPoseurPassword" type="password" placeholder="Minimum 8 caractères" autocomplete="new-password">
+      <label>Mot de passe provisoire</label>
+      <div style="position:relative">
+        <input id="newPoseurPassword" type="password" placeholder="Minimum 8 caractères" autocomplete="new-password" style="padding-right:52px">
+        <button type="button" onclick="togglePoseurPassword()" aria-label="Afficher ou masquer le mot de passe" style="position:absolute;right:8px;top:6px;border:0;background:#e8eef4;border-radius:8px;padding:9px 11px;cursor:pointer;font-size:18px">👁️</button>
+      </div>
       <button class="btn" onclick="createPoseur()">➕ Créer le compte poseur</button>
       <div id="poseurCreateMsg"></div>
     </div>
@@ -206,6 +210,12 @@ async function managePoseurs(){
     </div>
     <div class="item" style="background:#fff8e6"><b>🔐 Sécurité</b><p class="small">La création du compte passe par une fonction sécurisée Supabase. La clé secrète n'est jamais envoyée au navigateur.</p></div>
   </div>`;
+}
+
+function togglePoseurPassword(){
+  const input=document.getElementById('newPoseurPassword');
+  if(!input) return;
+  input.type=input.type==='password'?'text':'password';
 }
 
 async function createPoseur(){
@@ -218,7 +228,7 @@ async function createPoseur(){
   msg.className='small';msg.textContent='Création du compte…';
   const {data,error}=await supabaseClient.functions.invoke('create-poseur',{body:{email, password, full_name}});
   if(error){msg.className='error';msg.textContent='Erreur : '+(error.message||error);return;}
-  if(!data?.ok){msg.className='error';msg.textContent='Erreur : '+(data?.error||'Création impossible.');return;}
+  if(!data?.ok && !data?.success){msg.className='error';msg.textContent='Erreur : '+(data?.error||data?.message||'Création impossible.');return;}
   msg.className='ok';msg.textContent='Poseur créé : '+email;
   document.getElementById('newPoseurName').value='';
   document.getElementById('newPoseurEmail').value='';
