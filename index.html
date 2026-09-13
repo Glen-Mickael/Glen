@@ -251,43 +251,12 @@ async function openChantier(id){
     <div class="row filter-row"><button class="btn filter-btn" onclick="filterLogements('tous',this)">Tous (${total})</button><button class="btn secondary filter-btn" onclick="filterLogements('afaire',this)">⏳ À faire (${todo})</button><button class="btn secondary filter-btn" onclick="filterLogements('termine',this)">✅ Terminés (${done})</button></div>
     <p class="small">L'import se fait dans ce chantier. Les logements seront associés automatiquement à <b>${esc(c.nom)}</b>.</p>
     <div id="logementsList">${l?.length?l.map(logementHtml).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}</div>
-    <hr><h3>📋 Contrôle des logements</h3>
-    <p class="small">Vue rapide pour vérifier les photos et le quitus de chaque logement.</p>
-    <div id="controleLogements"><div class="item small">⏳ Chargement du contrôle…</div></div>
     <div id="importArea"></div>
     <hr><h3>👷 Gestion des poseurs</h3>
     <p class="small">Seuls les poseurs affectés peuvent accéder à ce chantier sur leur téléphone.</p>
     <div class="item"><b>Poseurs affectés</b>${a?.length?a.map(x=>`<div style="margin-top:12px;padding:12px;border:1px solid #dce3e9;border-radius:12px"><div style="font-weight:700">👷 ${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}</div>${x.profiles?.full_name?`<div class="small">${esc(x.profiles.email||"")}</div>`:""}<button class="btn danger" style="margin-top:10px;padding:9px 12px;font-size:14px" onclick="removePoseur('${id}','${x.poseur_id}')">❌ Retirer ce poseur</button></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div>
     <div class="item"><b>Ajouter un poseur</b><select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin:10px 0"><option value="">Choisir un poseur</option>${p?.filter(x=>!(a||[]).some(y=>y.poseur_id===x.id)).map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}</option>`).join("")}</select><button class="btn" onclick="assignPoseur('${id}')">➕ Affecter le poseur</button></div>
   </div>`;
-  chargerControleLogements(id);
-}
-
-async function chargerControleLogements(chantierId){
-  const zone=document.getElementById('controleLogements');
-  if(!zone) return;
-  try{
-    const {data:ls,error:le}=await supabaseClient.from('logements').select('id,nom,adresse,num_log,statut').eq('chantier_id',chantierId).order('created_at');
-    if(le) throw le;
-    const ids=(ls||[]).map(x=>x.id);
-    let photos=[], pdfs=[];
-    if(ids.length){
-      const {data:ph,error:pe}=await supabaseClient.from('photos').select('logement_id').in('logement_id',ids);
-      if(pe) throw pe;
-      photos=ph||[];
-      const {data:pd,error:de}=await supabaseClient.from('pdf_documents').select('logement_id').in('logement_id',ids);
-      if(de) throw de;
-      pdfs=pd||[];
-    }
-    const photoCount={}; (photos||[]).forEach(p=>photoCount[p.logement_id]=(photoCount[p.logement_id]||0)+1);
-    const pdfSet=new Set((pdfs||[]).map(p=>p.logement_id));
-    zone.innerHTML=(ls||[]).length ? (ls||[]).map(x=>{
-      const n=photoCount[x.id]||0, hasPdf=pdfSet.has(x.id), done=x.statut==='Terminé';
-      return `<div class="item" style="margin-bottom:10px"><div class="row" style="justify-content:space-between;align-items:center"><b>${esc(x.nom||'Logement')}</b><span class="status-badge ${done?'status-done':'status-todo'}">${done?'✅ Terminé':'⏳ À faire'}</span></div><div class="small">${esc(x.adresse||'')} ${x.num_log?'• Log '+esc(x.num_log):''}</div><div class="row" style="margin-top:10px;gap:8px"><span class="badge">📸 ${n} photo${n>1?'s':''}</span><span class="badge">${hasPdf?'📄 Quitus présent':'❌ Quitus manquant'}</span><span class="badge">✍️ Signatures dans le PDF</span></div></div>`;
-    }).join('') : '<p class="small">Aucun logement.</p>';
-  }catch(e){
-    zone.innerHTML=`<div class="item" style="color:#b42318">❌ Impossible de charger le contrôle : ${esc(e.message||String(e))}</div>`;
-  }
 }
 function filterLogements(filter,btn){
   document.querySelectorAll('.logement-item').forEach(el=>{el.style.display=(filter==='tous'||el.dataset.statut===filter)?'':'none';});
