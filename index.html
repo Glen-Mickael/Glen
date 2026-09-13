@@ -20,7 +20,9 @@ label{font-weight:600}
 hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 #app{min-height:70vh}.fill-field{display:block;margin:10px 0}.fill-field>span{display:block;font-weight:700;font-size:14px;margin-bottom:5px}.fill-field input[type=text],.fill-field select{width:100%;padding:10px;border:1px solid #c9d3dc;border-radius:8px;font-size:16px;background:#fff}.checkbox-field{display:flex;align-items:center;gap:10px;padding:8px 0}.checkbox-field span{margin:0}.checkbox-field input{width:20px;height:20px}
 .modal-backdrop{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:14px;z-index:1000}.modal{background:#fff;border-radius:18px;max-width:760px;width:100%;padding:18px;box-shadow:0 15px 50px #0005}.sig-wrap{border:2px dashed #9aa8b5;border-radius:12px;background:#fff;touch-action:none}.sig-wrap canvas{width:100%;height:220px;display:block;border-radius:10px;touch-action:none}.sig-note{font-size:13px;color:#66727e;margin:8px 0}.modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
-.status-badge{display:inline-block;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#eef2f7;color:#334155}.status-done{background:#dcfce7;color:#166534}.status-todo{background:#fef3c7;color:#92400e}.validate-box{margin-top:16px;padding:14px;border:1px solid #dbe3ea;border-radius:12px;background:#f8fafc}.validate-box h3{margin-top:0}.done-note{font-size:13px;color:#166534;margin-top:8px}</style>
+.status-badge{display:inline-block;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#eef2f7;color:#334155}.status-done{background:#dcfce7;color:#166534}.status-todo{background:#fef3c7;color:#92400e}.validate-box{margin-top:16px;padding:14px;border:1px solid #dbe3ea;border-radius:12px;background:#f8fafc}.validate-box h3{margin-top:0}.done-note{font-size:13px;color:#166534;margin-top:8px}
+.progress-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0}.progress-stats>div{border:1px solid #dce3e9;border-radius:14px;padding:14px;text-align:center;background:#f8fafc}.progress-stats b{display:block;font-size:28px}.progress-stats span{display:block;font-size:13px;color:#66727e;margin-top:4px}.filter-row{margin:12px 0}.filter-btn{flex:1;min-width:120px}@media(max-width:600px){.progress-stats{grid-template-columns:1fr 1fr}.progress-stats>div:first-child{grid-column:1/-1}}
+</style>
 <style>
 .work-checks{margin-top:24px}
 .work-checks h3{font-size:22px;margin:0 0 12px}
@@ -176,21 +178,32 @@ async function openChantier(id){
   const {data:l}=await supabaseClient.from("logements").select("*").eq("chantier_id",id).order("created_at");
   const {data:a}=await supabaseClient.from("chantier_poseurs").select("poseur_id, profiles(id,email,full_name)").eq("chantier_id",id);
   const {data:p}=await supabaseClient.from("profiles").select("id,email,full_name").eq("role","poseur").order("email");
+  const total=(l||[]).length, done=(l||[]).filter(x=>x.statut==='Terminé').length, todo=total-done;
+  const poseurIds=[...(new Set((l||[]).map(x=>x.termine_par).filter(Boolean)))];
+  let termineProfiles={};
+  if(poseurIds.length){ const {data:tp}=await supabaseClient.from("profiles").select("id,email,full_name").in("id",poseurIds); (tp||[]).forEach(x=>termineProfiles[x.id]=x); }
+  const logementHtml=(x)=>{ const pr=x.termine_par?termineProfiles[x.termine_par]:null; return `<div class="item logement-item" data-statut="${x.statut==='Terminé'?'termine':'afaire'}"><div class="row" style="justify-content:space-between;align-items:center"><b>${esc(x.nom||"Logement")}</b><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p>${x.statut==='Terminé'?`<p class="done-note">✅ Terminé le ${x.termine_at?new Date(x.termine_at).toLocaleString('fr-FR'):''}${pr?` par ${esc(pr.full_name||pr.email)}`:''}</p>`:''}<div class="row"><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button>${x.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${x.id}','À faire')">↩️ Rouvrir</button>`:''}</div></div>`; };
   app.innerHTML=`<div class="card">
     <div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button></div>
     <h2>${esc(c.nom)}</h2>
+    <div class="progress-stats"><div><b>${total}</b><span>Total logements</span></div><div><b>${todo}</b><span>⏳ À faire</span></div><div><b>${done}</b><span>✅ Terminés</span></div></div>
     <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Logements</h3><label class="btn" style="display:inline-block;text-align:center">📥 Importer Excel<input id="excelInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewExcel('${id}',this.files[0])"></label></div>
+    <div class="row filter-row"><button class="btn filter-btn" onclick="filterLogements('tous',this)">Tous (${total})</button><button class="btn secondary filter-btn" onclick="filterLogements('afaire',this)">⏳ À faire (${todo})</button><button class="btn secondary filter-btn" onclick="filterLogements('termine',this)">✅ Terminés (${done})</button></div>
     <p class="small">L'import se fait dans ce chantier. Les logements seront associés automatiquement à <b>${esc(c.nom)}</b>.</p>
-    ${l?.length?l.map(x=>`<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><b>${esc(x.nom||"Logement")}</b><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
+    <div id="logementsList">${l?.length?l.map(logementHtml).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}</div>
     <div id="importArea"></div>
     <hr><h3>Poseurs autorisés sur ce chantier</h3>
-    <select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin-bottom:10px">
-      <option value="">Choisir un poseur</option>${p?.map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}</option>`).join("")}
-    </select>
+    <select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin-bottom:10px"><option value="">Choisir un poseur</option>${p?.map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}</option>`).join("")}</select>
     <button class="btn" onclick="assignPoseur('${id}')">Ajouter le poseur</button>
     <div>${a?.length?a.map(x=>`<div class="item"><b>${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}</b></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div>
   </div>`;
 }
+function filterLogements(filter,btn){
+  document.querySelectorAll('.logement-item').forEach(el=>{el.style.display=(filter==='tous'||el.dataset.statut===filter)?'':'none';});
+  document.querySelectorAll('.filter-btn').forEach(b=>{b.classList.add('secondary');});
+  if(btn)btn.classList.remove('secondary');
+}
+
 async function assignPoseur(chantierId){
   const poseurId=document.getElementById("poseurSelect").value;
   if(!poseurId)return;
