@@ -429,7 +429,7 @@ async function savePdfEditor(){
   }
 }
 
-function openPdf(pdfId){
+async function openPdf(pdfId){
   const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single();
   if(error||!pdf){alert('PDF introuvable.');return;}
   const {data,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);
