@@ -20,6 +20,14 @@ label{font-weight:600}
 hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 #app{min-height:70vh}
 .modal-backdrop{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:14px;z-index:1000}.modal{background:#fff;border-radius:18px;max-width:760px;width:100%;padding:18px;box-shadow:0 15px 50px #0005}.sig-wrap{border:2px dashed #9aa8b5;border-radius:12px;background:#fff;touch-action:none}.sig-wrap canvas{width:100%;height:220px;display:block;border-radius:10px;touch-action:none}.sig-note{font-size:13px;color:#66727e;margin:8px 0}.modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
+
+.pdf-editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-height:62vh;overflow:auto;padding:4px}
+.pdf-field{background:#f7f9fb;border:1px solid #d8e0e8;border-radius:12px;padding:10px}
+.pdf-field label{display:block;font-weight:700;color:#203a5d;margin-bottom:6px}
+.pdf-field input,.pdf-field select{margin:0;width:100%}
+.pdf-check{display:flex;align-items:center;gap:10px;background:#f7f9fb;border:1px solid #d8e0e8;border-radius:12px;padding:12px}
+.pdf-check input{width:22px;height:22px;margin:0}
+@media(max-width:700px){.pdf-editor-grid{grid-template-columns:1fr}.modal{max-width:96vw}}
 </style>
 </head>
 <body>
@@ -202,7 +210,7 @@ async function openLogement(id,mode='poseur'){
     <hr><h3>📄 Document PDF original</h3>
     ${mode==='admin'?`<label class="btn file-label">📄 ${pdf?'Remplacer le PDF':'Ajouter le PDF original'}<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadPdf('${l.id}',this.files[0])"></label>`:''}
     <div id="pdfMsg"></div>
-    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="openPdf('${pdf.id}')">📄 Ouvrir le PDF</button>${mode==='admin'?`<button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Entreprise</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Locataire</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:''}</div></div>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
+    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="openPdf('${pdf.id}')">📄 Ouvrir le PDF</button><button class="btn" onclick="openPdfEditor('${pdf.id}','${l.id}')">✏️ Remplir / Enregistrer</button>${mode==='admin'?`<button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Entreprise</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Locataire</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:''}</div></div>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
     <p class="small">Le fichier est conservé comme PDF original, sans modification ni changement de mise en page.</p>
     <hr><h3>Photos</h3>
     ${mode==='poseur'?`<div class="row">
@@ -291,7 +299,138 @@ async function applySignature(){
     },700);
   }catch(e){msg.className='error';msg.textContent='Erreur : '+(e?.message||e);}
 }
-async function openPdf(pdfId){
+async 
+let pdfEditorPdfId=null, pdfEditorLogementId=null, pdfEditorFields=[];
+
+function prettyPdfFieldName(name){
+  const map={
+    'Numéro de téléphone':'Numéro de téléphone',
+    'Volume ballon 1':'Volume ballon 1',
+    'Volume ballon 2':'Volume ballon 2',
+    'Texte 4':'Choix 1',
+    'Texte 5':'Choix 2',
+    'DateBox1':'Date 1',
+    'DateBox2':'Date 2',
+    'Text2':'Texte 2',
+    'Text3':'Texte 3',
+    'Text111':'Texte 111',
+    '1':'Texte 1'
+  };
+  if(map[name])return map[name];
+  if(name.startsWith('Check Box'))return 'Case à cocher '+name.replace('Check Box','');
+  return name;
+}
+function escAttr(v){return esc(v).replace(/`/g,'&#96;');}
+
+async function openPdfEditor(pdfId,logementId){
+  pdfEditorPdfId=pdfId; pdfEditorLogementId=logementId;
+  document.body.insertAdjacentHTML('beforeend',`
+    <div id="pdfEditorModal" class="modal-backdrop">
+      <div class="modal" style="max-width:900px">
+        <h2>✏️ Remplir le PDF</h2>
+        <p class="sig-note">Les champs ci-dessous sont ceux du PDF original. Les signatures restent en place. Le PDF est enregistré sans changer sa mise en page.</p>
+        <div id="pdfEditorMsg" class="small">Lecture des champs…</div>
+        <div id="pdfEditorFields" class="pdf-editor-grid"></div>
+        <div class="modal-actions">
+          <button class="btn secondary" onclick="closePdfEditor()">Annuler</button>
+          <button class="btn" onclick="savePdfEditor()">💾 Enregistrer le PDF</button>
+        </div>
+      </div>
+    </div>`);
+  try{
+    const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single();
+    if(error||!pdf)throw error||new Error('PDF introuvable.');
+    const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);
+    if(se)throw se;
+    const response=await fetch(urlData.signedUrl);
+    if(!response.ok)throw new Error('Impossible de lire le PDF.');
+    const bytes=await response.arrayBuffer();
+    const doc=await PDFLib.PDFDocument.load(bytes,{updateFieldAppearances:false});
+    const form=doc.getForm();
+    const fields=form.getFields();
+    pdfEditorFields=fields;
+    const box=document.getElementById('pdfEditorFields');
+    const parts=[];
+    for(let i=0;i<fields.length;i++){
+      const f=fields[i], name=f.getName();
+      let htmlField='';
+      try{
+        if(f instanceof PDFLib.PDFTextField){
+          const val=f.getText()||'';
+          htmlField=`<div class="pdf-field"><label>${esc(prettyPdfFieldName(name))}</label><input data-pdf-type="text" data-pdf-name="${escAttr(name)}" value="${escAttr(val)}"></div>`;
+        }else if(f instanceof PDFLib.PDFDropdown){
+          const opts=f.getOptions();
+          const val=f.getSelected()||[];
+          htmlField=`<div class="pdf-field"><label>${esc(prettyPdfFieldName(name))}</label><select data-pdf-type="dropdown" data-pdf-name="${escAttr(name)}"><option value=""></option>${opts.map(o=>`<option value="${escAttr(o)}" ${val.includes(o)?'selected':''}>${esc(o)}</option>`).join('')}</select></div>`;
+        }else if(f instanceof PDFLib.PDFCheckBox){
+          const checked=f.isChecked();
+          htmlField=`<label class="pdf-check"><input type="checkbox" data-pdf-type="checkbox" data-pdf-name="${escAttr(name)}" ${checked?'checked':''}><span>${esc(prettyPdfFieldName(name))}</span></label>`;
+        }else{
+          htmlField=`<div class="pdf-field"><label>${esc(prettyPdfFieldName(name))}</label><input data-pdf-type="unsupported" value="" disabled><div class="small">Champ non modifiable ici.</div></div>`;
+        }
+      }catch(e){
+        htmlField=`<div class="pdf-field"><label>${esc(prettyPdfFieldName(name))}</label><div class="small">Champ non modifiable ici.</div></div>`;
+      }
+      parts.push(htmlField);
+    }
+    box.innerHTML=parts.join('');
+    document.getElementById('pdfEditorMsg').textContent=`${fields.length} champs du PDF chargés.`;
+  }catch(e){
+    const m=document.getElementById('pdfEditorMsg'); if(m){m.className='error';m.textContent='Erreur : '+(e.message||e);}
+  }
+}
+
+function closePdfEditor(){
+  document.getElementById('pdfEditorModal')?.remove();
+  pdfEditorPdfId=null; pdfEditorLogementId=null; pdfEditorFields=[];
+}
+
+async function savePdfEditor(){
+  const msg=document.getElementById('pdfEditorMsg'); if(!pdfEditorPdfId)return;
+  msg.className='small'; msg.textContent='Enregistrement du PDF…';
+  try{
+    const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfEditorPdfId).single();
+    if(error||!pdf)throw error||new Error('PDF introuvable.');
+    const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);
+    if(se)throw se;
+    const response=await fetch(urlData.signedUrl);
+    if(!response.ok)throw new Error('Impossible de lire le PDF.');
+    const bytes=await response.arrayBuffer();
+    const doc=await PDFLib.PDFDocument.load(bytes,{updateFieldAppearances:false});
+    const form=doc.getForm();
+    document.querySelectorAll('#pdfEditorFields [data-pdf-name]').forEach(el=>{
+      const name=el.getAttribute('data-pdf-name'), type=el.getAttribute('data-pdf-type');
+      try{
+        if(type==='text')form.getTextField(name).setText(el.value||'');
+        else if(type==='dropdown'){
+          const f=form.getDropdown(name);
+          if(el.value)f.select(el.value); else f.clear();
+        }else if(type==='checkbox'){
+          const f=form.getCheckBox(name);
+          if(el.checked)f.check(); else f.uncheck();
+        }
+      }catch(e){}
+    });
+    // Keep the PDF's existing editable form fields. Do not flatten.
+    const saved=await doc.save({updateFieldAppearances:true});
+    const blob=new Blob([saved],{type:'application/pdf'});
+    const newPath=`${pdfEditorLogementId}/saved-${Date.now()}-${pdf.original_filename.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+    const {error:ue}=await supabaseClient.storage.from('glen-documents').upload(newPath,blob,{contentType:'application/pdf',upsert:false});
+    if(ue)throw ue;
+    const {error:up}=await supabaseClient.from('pdf_documents').update({storage_path:newPath,updated_at:new Date().toISOString()}).eq('id',pdf.id);
+    if(up){
+      await supabaseClient.storage.from('glen-documents').remove([newPath]);
+      throw up;
+    }
+    await supabaseClient.storage.from('glen-documents').remove([pdf.storage_path]);
+    msg.className='ok'; msg.textContent='✅ PDF enregistré avec les modifications.';
+    setTimeout(()=>{closePdfEditor(); openLogement(pdfEditorLogementId,currentProfile.role);},700);
+  }catch(e){
+    msg.className='error'; msg.textContent='Erreur : '+(e.message||e);
+  }
+}
+
+function openPdf(pdfId){
   const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single();
   if(error||!pdf){alert('PDF introuvable.');return;}
   const {data,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);
