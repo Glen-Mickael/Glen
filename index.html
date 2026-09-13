@@ -96,6 +96,7 @@ hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script>
 /* REMPLACER CES DEUX VALEURS PAR CELLES DE TON PROJET SUPABASE */
 const SUPABASE_URL = "https://vmhqbywplgahrxozroit.supabase.co";
@@ -199,7 +200,7 @@ async function openChantier(id){
   const poseurIds=[...(new Set((l||[]).map(x=>x.termine_par).filter(Boolean)))];
   let termineProfiles={};
   if(poseurIds.length){ const {data:tp}=await supabaseClient.from("profiles").select("id,email,full_name").in("id",poseurIds); (tp||[]).forEach(x=>termineProfiles[x.id]=x); }
-  const logementHtml=(x)=>{ const pr=x.termine_par?termineProfiles[x.termine_par]:null; return `<div class="item logement-item" data-statut="${x.statut==='Terminé'?'termine':'afaire'}"><div class="row" style="justify-content:space-between;align-items:center"><b>${esc(x.nom||"Logement")}</b><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p>${x.statut==='Terminé'?`<p class="done-note">✅ Terminé le ${x.termine_at?new Date(x.termine_at).toLocaleString('fr-FR'):''}${pr?` par ${esc(pr.full_name||pr.email)}`:''}</p>`:''}<div class="row"><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button>${x.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${x.id}','À faire')">↩️ Rouvrir</button>`:''}</div></div>`; };
+  const logementHtml=(x)=>{ const pr=x.termine_par?termineProfiles[x.termine_par]:null; return `<div class="item logement-item" data-statut="${x.statut==='Terminé'?'termine':'afaire'}"><div class="row" style="justify-content:space-between;align-items:center"><b>${esc(x.nom||"Logement")}</b><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p>${x.statut==='Terminé'?`<p class="done-note">✅ Terminé le ${x.termine_at?new Date(x.termine_at).toLocaleString('fr-FR'):''}${pr?` par ${esc(pr.full_name||pr.email)}`:''}</p>`:''}<div class="row"><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button><button class="btn" onclick="exportLogementDossier('${x.id}')">📦 Exporter le dossier</button>${x.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${x.id}','À faire')">↩️ Rouvrir</button>`:''}</div></div>`; };
   app.innerHTML=`<div class="card">
     <div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button></div>
     <h2>${esc(c.nom)}</h2>
@@ -324,6 +325,53 @@ async function setLogementStatus(logementId,status){
     await openLogement(logementId,currentProfile?.role==='admin'?'admin':'poseur');
   }catch(e){if(msg){msg.className='error';msg.textContent='Erreur : '+e.message;}else alert(e.message);}
 }
+
+async function exportLogementDossier(logementId){
+  try{
+    const btn=event?.currentTarget; if(btn){btn.disabled=true;btn.textContent='⏳ Export…';}
+    const {data:l,error:le}=await supabaseClient.from('logements').select('*').eq('id',logementId).single();
+    if(le||!l) throw le||new Error('Logement introuvable.');
+    const {data:photos,error:pe}=await supabaseClient.from('photos').select('*').eq('logement_id',logementId).order('created_at',{ascending:true});
+    if(pe) throw pe;
+    const {data:pdf,error:de}=await supabaseClient.from('pdf_documents').select('*').eq('logement_id',logementId).maybeSingle();
+    if(de) throw de;
+    const zip=new JSZip();
+    const folder=zip.folder(safeExportName(l.nom||'Logement'));
+    const photoFolder=folder.folder('Photos');
+    for(let i=0;i<(photos||[]).length;i++){
+      const p=photos[i];
+      let blob=null;
+      if(p.storage_path){
+        const {data:u,error:ue}=await supabaseClient.storage.from('glen-photos').createSignedUrl(p.storage_path,3600);
+        if(!ue&&u?.signedUrl){const r=await fetch(u.signedUrl);if(r.ok)blob=await r.blob();}
+      }
+      if(!blob && p.public_url){const r=await fetch(p.public_url);if(r.ok)blob=await r.blob();}
+      if(blob) photoFolder.file(`photo_${String(i+1).padStart(2,'0')}.jpg`,blob);
+    }
+    if(pdf){
+      const {data:u,error:ue}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);
+      if(!ue&&u?.signedUrl){const r=await fetch(u.signedUrl);if(r.ok) folder.folder('Quitus').file(safeExportName(pdf.original_filename||'Quitus.pdf'),await r.blob());}
+    }
+    const infos=[
+      `Logement : ${l.nom||''}`,
+      `Adresse : ${l.adresse||''}`,
+      `Code : ${l.code||''}`,
+      `Commune : ${l.commune||''}`,
+      `Téléphone : ${l.telephone||''}`,
+      `Mail : ${l.mail||''}`,
+      `N° Bat : ${l.num_bat||''}`,
+      `N° Log : ${l.num_log||''}`,
+      `Étage : ${l.etage||''}`,
+      `Type : ${l.type||''}`,
+      `Statut : ${l.statut||'À faire'}`,
+      `Terminé le : ${l.termine_at?new Date(l.termine_at).toLocaleString('fr-FR'):''}`
+    ].join('\n');
+    folder.file('Informations logement.txt',infos);
+    const blob=await zip.generateAsync({type:'blob'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`Dossier_${safeExportName(l.nom||'Logement')}.zip`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  }catch(e){alert('Erreur export : '+e.message);}finally{const b=event?.currentTarget;if(b){b.disabled=false;b.textContent='📦 Exporter le dossier';}}
+}
+function safeExportName(v){return String(v||'Logement').replace(/[\\/:*?"<>|]/g,'_').replace(/\s+/g,' ').trim().slice(0,100)||'Logement';}
 
 async function uploadPdf(logementId,file){
   if(!file)return;
