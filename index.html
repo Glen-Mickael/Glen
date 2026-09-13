@@ -9,7 +9,7 @@
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
 main{max-width:900px;margin:22px auto;padding:0 16px}.card{background:white;border-radius:20px;padding:22px;margin-bottom:18px;box-shadow:0 5px 20px #0000000c}
-h2{margin-top:0}.btn{border:0;border-radius:12px;padding:13px 18px;font-size:16px;font-weight:700;cursor:pointer;background:#2375b9;color:#fff}.btn.secondary{background:#e8eef4;color:#203a5d}.btn.danger{background:#b93838}.btn:disabled{opacity:.5}
+h2{margin-top:0}.btn{border:0;border-radius:12px;padding:13px 18px;font-size:16px;font-weight:700;cursor:pointer;background:#2375b9;color:#fff}.btn.secondary{background:#e8eef4;color:#203a5d}.filter-btn.active{background:#2375b9;color:#fff}.btn.danger{background:#b93838}.btn:disabled{opacity:.5}
 input{width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;font-size:16px;margin:6px 0 12px}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.small{color:#66727e}.error{color:#b42318;margin-top:8px}.ok{color:#18794e;margin-top:8px}
 .item{border:1px solid #dce3e9;border-radius:14px;padding:15px;margin:10px 0}.item h3{margin:0 0 5px}.item p{margin:4px 0}
@@ -260,8 +260,8 @@ async function openChantier(id){
 }
 function filterLogements(filter,btn){
   document.querySelectorAll('.logement-item').forEach(el=>{el.style.display=(filter==='tous'||el.dataset.statut===filter)?'':'none';});
-  document.querySelectorAll('.filter-btn').forEach(b=>{b.classList.add('secondary');});
-  if(btn)btn.classList.remove('secondary');
+  document.querySelectorAll('.filter-btn').forEach(b=>{b.classList.remove('active');b.classList.add('secondary');});
+  if(btn){btn.classList.remove('secondary');btn.classList.add('active');}
 }
 
 async function assignPoseur(chantierId){
@@ -346,9 +346,16 @@ async function poseurHome(){
     </div>
     <div id="poseurLogementList"></div>
   </div>`;
-  window.poseurFilter='all'; renderPoseurLogements();
+  window.poseurFilter='all'; setPoseurFilter('all');
 }
-function setPoseurFilter(f){window.poseurFilter=f; renderPoseurLogements();}
+function setPoseurFilter(f){
+  window.poseurFilter=f;
+  document.querySelectorAll('.filter-btn').forEach(b=>{b.classList.remove('active');b.classList.add('secondary');});
+  const buttons=document.querySelectorAll('.filter-btn');
+  const index=f==='all'?0:f==='todo'?1:2;
+  if(buttons[index]){buttons[index].classList.remove('secondary');buttons[index].classList.add('active');}
+  renderPoseurLogements();
+}
 function renderPoseurLogements(){
   const list=document.getElementById('poseurLogementList'); if(!list)return;
   const q=(document.getElementById('poseurSearch')?.value||'').trim().toLowerCase();
@@ -369,7 +376,7 @@ async function poseurChantier(id){
   if(error){set("Erreur : "+esc(error.message),"error");return;}
   window.poseurLogements=(l||[]).map(x=>({...x,chantier_nom:c.nom||"Chantier"}));
   app.innerHTML=`<div class="card"><button class="btn secondary" onclick="poseurHome()">← Mes logements</button><h2>${esc(c.nom)}</h2><div id="poseurLogementList"></div></div>`;
-  window.poseurFilter='all'; renderPoseurLogements();
+  window.poseurFilter='all'; setPoseurFilter('all');
 }
 async function openLogement(id,mode='poseur'){
   const {data:l,error}=await supabaseClient.from("logements").select("*").eq("id",id).single();
