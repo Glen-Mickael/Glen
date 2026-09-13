@@ -24,6 +24,7 @@ hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 <header><h1>GLEN</h1><p>Gestion des chantiers et logements</p></header>
 <main id="app"></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* REMPLACER CES DEUX VALEURS PAR CELLES DE TON PROJET SUPABASE */
 const SUPABASE_URL = "https://vmhqbywplgahrxozroit.supabase.co";
@@ -109,8 +110,10 @@ async function openChantier(id){
   app.innerHTML=`<div class="card">
     <div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button></div>
     <h2>${esc(c.nom)}</h2>
-    <h3>Logements</h3>
-    ${l?.length?l.map(x=>`<div class="item"><b>${esc(x.nom||"Logement")}</b><p>${esc(x.adresse||"")}</p></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
+    <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Logements</h3><label class="btn" style="display:inline-block;text-align:center">📥 Importer Excel<input id="excelInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewExcel('${id}',this.files[0])"></label></div>
+    <p class="small">L'import se fait dans ce chantier. Les logements seront associés automatiquement à <b>${esc(c.nom)}</b>.</p>
+    ${l?.length?l.map(x=>`<div class="item"><b>${esc(x.nom||"Logement")}</b><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p></div>`).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}
+    <div id="importArea"></div>
     <hr><h3>Poseurs autorisés sur ce chantier</h3>
     <select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin-bottom:10px">
       <option value="">Choisir un poseur</option>${p?.map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}</option>`).join("")}
@@ -125,6 +128,43 @@ async function assignPoseur(chantierId){
   const {error}=await supabaseClient.from("chantier_poseurs").insert({chantier_id:chantierId,poseur_id:poseurId});
   if(error && error.code!=="23505"){alert(error.message);return;}
   openChantier(chantierId);
+}
+
+
+function normHeader(v){return String(v??"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/g,"");}
+function mapHeaders(headers){
+  const aliases={nom:["nom","nometprenom","nomlocataire","locataire"],adresse:["adresse","adresselogement"],code:["code","codepostal","cp"],commune:["commune","ville"],telephone:["telephone","tel","phone"],mail:["mail","email","courriel"],num_bat:["nbat","numbat","numerobatiment","batiment"],num_log:["nlog","numlog","numerologement","logement"],etage:["etage","niveau"],type:["type","typologie"]};
+  const out={}; headers.forEach((h,i)=>{const n=normHeader(h); for(const [key,list] of Object.entries(aliases)){if(list.includes(n) && out[key]===undefined) out[key]=i;}}); return out;
+}
+async function previewExcel(chantierId,file){
+  if(!file)return;
+  const area=document.getElementById("importArea");
+  area.innerHTML='<div class="item"><b>Lecture du fichier…</b></div>';
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array"});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+    if(!rows.length) throw new Error("Le fichier est vide.");
+    const headers=rows[0]; const idx=mapHeaders(headers);
+    const required=["nom","adresse","code","commune","telephone","mail","num_bat","num_log","etage","type"];
+    const missing=required.filter(k=>idx[k]===undefined);
+    if(missing.length) throw new Error("Colonnes non reconnues : "+missing.join(", ")+". Vérifie la première ligne du fichier Excel.");
+    const data=rows.slice(1).filter(r=>r.some(v=>String(v).trim()!=="")).map(r=>{const o={}; for(const k of required)o[k]=String(r[idx[k]]??"").trim(); return o;});
+    if(!data.length) throw new Error("Aucun logement trouvé dans le fichier.");
+    window.glenImport={chantierId,data};
+    area.innerHTML=`<div class="item"><h3>Prévisualisation de l'import</h3><p><b>${data.length}</b> logement(s) détecté(s).</p><div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>${required.map(k=>`<th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">${esc(k)}</th>`).join("")}</tr></thead><tbody>${data.slice(0,8).map(r=>`<tr>${required.map(k=>`<td style="padding:6px;border-bottom:1px solid #eee">${esc(r[k])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>${data.length>8?'<p class="small">Aperçu limité aux 8 premières lignes. Toutes les lignes seront importées.</p>':''}<div class="row"><button class="btn" onclick="validateImport()">✅ Valider l’import</button><button class="btn secondary" onclick="cancelImport('${chantierId}')">Annuler</button></div><div id="importMsg"></div></div>`;
+  }catch(e){area.innerHTML=`<div class="item error">${esc(e.message)}</div>`;}
+}
+function cancelImport(chantierId){window.glenImport=null; openChantier(chantierId);}
+async function validateImport(){
+  const imp=window.glenImport; if(!imp)return;
+  const msg=document.getElementById("importMsg"); if(msg)msg.textContent="Import en cours…";
+  const payload=imp.data.map(x=>({...x,chantier_id:imp.chantierId}));
+  const {error}=await supabaseClient.from("logements").insert(payload);
+  if(error){if(msg){msg.className="error";msg.textContent="Erreur : "+error.message;}return;}
+  window.glenImport=null;
+  await openChantier(imp.chantierId);
 }
 
 async function poseurHome(){
