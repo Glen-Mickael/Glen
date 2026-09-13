@@ -357,7 +357,7 @@ const FIELD_LABELS={
   "Check Box24":"Avis locataire – Propreté du logement – 1",
   "Check Box26":"Avis locataire – Propreté du logement – 2"
 };
-const HIDDEN_FIXED_FIELDS=new Set(["1","Text2","Text3","Text111","Numéro locataire"]);
+const HIDDEN_FIXED_FIELDS=new Set(["1","Numéro locataire","Text2","Text3","Text111"]);
 
 let fillPdfId=null, fillLogementId=null, fillDoc=null, fillForm=null;
 async function openFillPdf(pdfId,logementId){
@@ -384,8 +384,8 @@ async function openFillPdf(pdfId,logementId){
       if(type==='PDFCheckBox') return `<label class="fill-field checkbox-field"><input type="checkbox" data-fill-name="${name}" data-fill-type="checkbox" ${f.isChecked()?'checked':''}><span>${label}</span></label>`;
       if(type==='PDFDropdown' || type==='PDFOptionList'){
         const current=(f.getSelected?.()[0])||'';
-        const isNombre=rawName.startsWith('Nombre ');
-        if(isNombre){
+        const isQuantity=/^Nombre\s+\d+$/i.test(rawName);
+        if(isQuantity){
           const opts=Array.from({length:10},(_,n)=>String(n+1));
           const selected=opts.includes(current)?current:'';
           return `<label class="fill-field"><span>${label}</span><select data-fill-name="${name}" data-fill-type="dropdown"><option value="">—</option>${opts.map(o=>`<option value="${o}" ${o===selected?'selected':''}>${o}</option>`).join('')}</select></label>`;
