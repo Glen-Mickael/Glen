@@ -22,6 +22,8 @@ hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 .modal-backdrop{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:14px;z-index:1000}.modal{background:#fff;border-radius:18px;max-width:760px;width:100%;padding:18px;box-shadow:0 15px 50px #0005}.sig-wrap{border:2px dashed #9aa8b5;border-radius:12px;background:#fff;touch-action:none}.sig-wrap canvas{width:100%;height:220px;display:block;border-radius:10px;touch-action:none}.sig-note{font-size:13px;color:#66727e;margin:8px 0}.modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
 .status-badge{display:inline-block;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#eef2f7;color:#334155}.status-done{background:#dcfce7;color:#166534}.status-todo{background:#fef3c7;color:#92400e}.validate-box{margin-top:16px;padding:14px;border:1px solid #dbe3ea;border-radius:12px;background:#f8fafc}.validate-box h3{margin-top:0}.done-note{font-size:13px;color:#166534;margin-top:8px}
 .progress-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0}.progress-stats>div{border:1px solid #dce3e9;border-radius:14px;padding:14px;text-align:center;background:#f8fafc}.progress-stats b{display:block;font-size:28px}.progress-stats span{display:block;font-size:13px;color:#66727e;margin-top:4px}.filter-row{margin:12px 0}.filter-btn{flex:1;min-width:120px}@media(max-width:600px){.progress-stats{grid-template-columns:1fr 1fr}.progress-stats>div:first-child{grid-column:1/-1}}
+
+.control-table{width:100%;border-collapse:collapse;font-size:14px;background:#fff}.control-table th,.control-table td{padding:10px 8px;border-bottom:1px solid #e6ebef;text-align:left;vertical-align:middle}.control-table th{font-weight:700;background:#f6f8fa;white-space:nowrap}.control-table td:nth-child(n+2){white-space:nowrap}.control-table tr:hover{background:#fafbfc}
 </style>
 <style>
 .work-checks{margin-top:24px}
@@ -251,12 +253,44 @@ async function openChantier(id){
     <div class="row filter-row"><button class="btn filter-btn" onclick="filterLogements('tous',this)">Tous (${total})</button><button class="btn secondary filter-btn" onclick="filterLogements('afaire',this)">⏳ À faire (${todo})</button><button class="btn secondary filter-btn" onclick="filterLogements('termine',this)">✅ Terminés (${done})</button></div>
     <p class="small">L'import se fait dans ce chantier. Les logements seront associés automatiquement à <b>${esc(c.nom)}</b>.</p>
     <div id="logementsList">${l?.length?l.map(logementHtml).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}</div>
+    <hr><h3>📋 Contrôle des logements</h3>
+    <p class="small">Vue rapide pour vérifier les photos et le quitus de chaque logement. Les signatures restent dans le PDF.</p>
+    <div id="controleLogements"><div class="item small">⏳ Chargement du contrôle…</div></div>
     <div id="importArea"></div>
     <hr><h3>👷 Gestion des poseurs</h3>
     <p class="small">Seuls les poseurs affectés peuvent accéder à ce chantier sur leur téléphone.</p>
     <div class="item"><b>Poseurs affectés</b>${a?.length?a.map(x=>`<div style="margin-top:12px;padding:12px;border:1px solid #dce3e9;border-radius:12px"><div style="font-weight:700">👷 ${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}</div>${x.profiles?.full_name?`<div class="small">${esc(x.profiles.email||"")}</div>`:""}<button class="btn danger" style="margin-top:10px;padding:9px 12px;font-size:14px" onclick="removePoseur('${id}','${x.poseur_id}')">❌ Retirer ce poseur</button></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div>
     <div class="item"><b>Ajouter un poseur</b><select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin:10px 0"><option value="">Choisir un poseur</option>${p?.filter(x=>!(a||[]).some(y=>y.poseur_id===x.id)).map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}</option>`).join("")}</select><button class="btn" onclick="assignPoseur('${id}')">➕ Affecter le poseur</button></div>
   </div>`;
+  chargerControleLogements(${JSON.stringify(id)});
+}
+
+async function chargerControleLogements(chantierId){
+  const zone=document.getElementById('controleLogements');
+  if(!zone) return;
+  try{
+    const {data:ls,error:le}=await supabaseClient.from('logements').select('id,nom,adresse,num_log,statut').eq('chantier_id',chantierId).order('created_at');
+    if(le) throw le;
+    const ids=(ls||[]).map(x=>x.id);
+    let photos=[];
+    if(ids.length){
+      const {data:ph,error:pe}=await supabaseClient.from('photos').select('logement_id').in('logement_id',ids);
+      if(pe) throw pe;
+      photos=ph||[];
+    }
+    const counts={}; photos.forEach(x=>counts[x.logement_id]=(counts[x.logement_id]||0)+1);
+    let pdfs=[];
+    if(ids.length){
+      const {data:pd,error:de}=await supabaseClient.from('pdf_documents').select('logement_id,original_filename,updated_at').in('logement_id',ids);
+      if(de) throw de;
+      pdfs=pd||[];
+    }
+    const pdfMap={}; pdfs.forEach(x=>pdfMap[x.logement_id]=x);
+    zone.innerHTML=ls?.length?`<div style="overflow:auto"><table class="control-table"><thead><tr><th>Logement</th><th>Photos</th><th>Quitus</th><th>Signatures</th><th>État</th></tr></thead><tbody>${ls.map(x=>{
+      const n=counts[x.id]||0, pdf=pdfMap[x.id];
+      return `<tr><td><b>${esc(x.nom||'Logement')}</b><div class="small">${esc(x.adresse||'')}${x.num_log?` • Log ${esc(x.num_log)}`:''}</div></td><td>${n?`✅ ${n}`:'❌ 0'}</td><td>${pdf?'✅ Oui':'❌ Non'}</td><td>${pdf?'📄 Dans le PDF':'❌ Non'}</td><td>${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</td></tr>`;
+    }).join('')}</tbody></table></div>`:"<p class='small'>Aucun logement.</p>";
+  }catch(e){ zone.innerHTML=`<div class="error">Erreur contrôle : ${esc(e.message||e)}</div>`; }
 }
 function filterLogements(filter,btn){
   document.querySelectorAll('.logement-item').forEach(el=>{el.style.display=(filter==='tous'||el.dataset.statut===filter)?'':'none';});
