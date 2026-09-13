@@ -202,7 +202,7 @@ async function openChantier(id){
   if(poseurIds.length){ const {data:tp}=await supabaseClient.from("profiles").select("id,email,full_name").in("id",poseurIds); (tp||[]).forEach(x=>termineProfiles[x.id]=x); }
   const logementHtml=(x)=>{ const pr=x.termine_par?termineProfiles[x.termine_par]:null; return `<div class="item logement-item" data-statut="${x.statut==='Terminé'?'termine':'afaire'}"><div class="row" style="justify-content:space-between;align-items:center"><b>${esc(x.nom||"Logement")}</b><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p>${x.statut==='Terminé'?`<p class="done-note">✅ Terminé le ${x.termine_at?new Date(x.termine_at).toLocaleString('fr-FR'):''}${pr?` par ${esc(pr.full_name||pr.email)}`:''}</p>`:''}<div class="row"><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button><button class="btn" onclick="exportLogementDossier('${x.id}')">📦 Exporter le dossier</button>${x.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${x.id}','À faire')">↩️ Rouvrir</button>`:''}</div></div>`; };
   app.innerHTML=`<div class="card">
-    <div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button></div>
+    <div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button><button class="btn" onclick="exportChantierDossier('${id}')">📦 Exporter le chantier</button></div>
     <h2>${esc(c.nom)}</h2>
     <div class="progress-stats"><div><b>${total}</b><span>Total logements</span></div><div><b>${todo}</b><span>⏳ À faire</span></div><div><b>${done}</b><span>✅ Terminés</span></div></div>
     <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Logements</h3><label class="btn" style="display:inline-block;text-align:center">📥 Importer Excel<input id="excelInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewExcel('${id}',this.files[0])"></label></div>
@@ -324,6 +324,38 @@ async function setLogementStatus(logementId,status){
     if(error)throw error;
     await openLogement(logementId,currentProfile?.role==='admin'?'admin':'poseur');
   }catch(e){if(msg){msg.className='error';msg.textContent='Erreur : '+e.message;}else alert(e.message);}
+}
+
+async function exportChantierDossier(chantierId){
+  try{
+    const {data:c,error:ce}=await supabaseClient.from('chantiers').select('*').eq('id',chantierId).single();
+    if(ce||!c) throw ce||new Error('Chantier introuvable.');
+    const {data:logements,error:le}=await supabaseClient.from('logements').select('*').eq('chantier_id',chantierId).order('created_at');
+    if(le) throw le;
+    const zip=new JSZip();
+    const root=zip.folder(safeExportName(c.nom||'Chantier'));
+    for(let n=0;n<(logements||[]).length;n++){
+      const l=logements[n];
+      const label=(l.num_log?`Logement ${l.num_log}`:(l.nom||`Logement ${n+1}`));
+      const folder=root.folder(safeExportName(label));
+      const photoFolder=folder.folder('Photos');
+      const {data:photos,error:pe}=await supabaseClient.from('photos').select('*').eq('logement_id',l.id).order('created_at',{ascending:true});
+      if(pe) throw pe;
+      for(let i=0;i<(photos||[]).length;i++){
+        const ph=photos[i]; let blob=null;
+        if(ph.storage_path){const {data:u,error:ue}=await supabaseClient.storage.from('glen-photos').createSignedUrl(ph.storage_path,3600); if(!ue&&u?.signedUrl){const r=await fetch(u.signedUrl);if(r.ok)blob=await r.blob();}}
+        if(!blob&&ph.public_url){const r=await fetch(ph.public_url);if(r.ok)blob=await r.blob();}
+        if(blob) photoFolder.file(`photo_${String(i+1).padStart(2,'0')}.jpg`,blob);
+      }
+      const {data:pdf,error:de}=await supabaseClient.from('pdf_documents').select('*').eq('logement_id',l.id).maybeSingle();
+      if(de) throw de;
+      if(pdf?.storage_path){const {data:u,error:ue}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600); if(!ue&&u?.signedUrl){const r=await fetch(u.signedUrl);if(r.ok)folder.folder('Quitus').file(safeExportName(pdf.original_filename||'Quitus.pdf'),await r.blob());}}
+      const infos=[`Logement : ${l.nom||''}`,`Adresse : ${l.adresse||''}`,`Code : ${l.code||''}`,`Commune : ${l.commune||''}`,`Téléphone : ${l.telephone||''}`,`Mail : ${l.mail||''}`,`N° Bat : ${l.num_bat||''}`,`N° Log : ${l.num_log||''}`,`Étage : ${l.etage||''}`,`Type : ${l.type||''}`,`Statut : ${l.statut||'À faire'}`,`Terminé le : ${l.termine_at?new Date(l.termine_at).toLocaleString('fr-FR'):''}`].join('\n');
+      folder.file('Informations logement.txt',infos);
+    }
+    const blob=await zip.generateAsync({type:'blob'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`Dossier_${safeExportName(c.nom||'Chantier')}.zip`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  }catch(e){alert('Erreur export chantier : '+e.message);}
 }
 
 async function exportLogementDossier(logementId){
