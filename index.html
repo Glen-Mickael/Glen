@@ -9,7 +9,7 @@
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
 main{max-width:900px;margin:22px auto;padding:0 16px}.card{background:white;border-radius:20px;padding:22px;margin-bottom:18px;box-shadow:0 5px 20px #0000000c}
-h2{margin-top:0}.btn{border:0;border-radius:12px;padding:13px 18px;font-size:16px;font-weight:700;cursor:pointer;background:#2375b9;color:#fff}.btn.secondary{background:#e8eef4;color:#203a5d}.filter-btn.active{background:#2375b9 !important;color:#fff !important;border:0 !important}.btn.danger{background:#b93838}.btn:disabled{opacity:.5}
+h2{margin-top:0}.btn{border:0;border-radius:12px;padding:13px 18px;font-size:16px;font-weight:700;cursor:pointer;background:#2375b9;color:#fff}.btn.secondary{background:#e8eef4;color:#203a5d}.filter-btn.active{background:#2375b9;color:#fff}.btn.danger{background:#b93838}.btn:disabled{opacity:.5}
 input{width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;font-size:16px;margin:6px 0 12px}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.small{color:#66727e}.error{color:#b42318;margin-top:8px}.ok{color:#18794e;margin-top:8px}
 .item{border:1px solid #dce3e9;border-radius:14px;padding:15px;margin:10px 0}.item h3{margin:0 0 5px}.item p{margin:4px 0}
@@ -196,7 +196,7 @@ async function managePoseurs(){
       <h3>➕ Nouveau poseur</h3>
       <label>Nom / prénom</label><input id="newPoseurName" type="text" placeholder="Ex. Damien Dumas" autocomplete="name">
       <label>Email</label><input id="newPoseurEmail" type="email" placeholder="poseur@glen.fr" autocomplete="email">
-      <label>Mot de passe provisoire</label><input id="newPoseurPassword" type="password" placeholder="Minimum 8 caractères" autocomplete="new-password">
+      <label>Mot de passe provisoire</label><input id="newPoseurPassword" type="password" placeholder="Minimum 4 caractères" autocomplete="new-password">
       <button class="btn" onclick="createPoseur()">➕ Créer le compte poseur</button>
       <div id="poseurCreateMsg"></div>
     </div>
@@ -214,7 +214,7 @@ async function createPoseur(){
   const email=document.getElementById('newPoseurEmail').value.trim().toLowerCase();
   const password=document.getElementById('newPoseurPassword').value;
   if(!email){msg.className='error';msg.textContent='Indique l’email du poseur.';return;}
-  if(password.length<8){msg.className='error';msg.textContent='Le mot de passe provisoire doit contenir au moins 8 caractères.';return;}
+  if(password.length<4){msg.className='error';msg.textContent='Le mot de passe provisoire doit contenir au moins 4 caractères.';return;}
   msg.className='small';msg.textContent='Création du compte…';
   const {data,error}=await supabaseClient.functions.invoke('create-poseur',{body:{email, password, full_name}});
   if(error){msg.className='error';msg.textContent='Erreur : '+(error.message||error);return;}
@@ -353,7 +353,7 @@ function setPoseurFilter(f){
   document.querySelectorAll('.filter-btn').forEach(b=>{b.classList.remove('active');b.classList.add('secondary');});
   const buttons=document.querySelectorAll('.filter-btn');
   const index=f==='all'?0:f==='todo'?1:2;
-  if(buttons[index]){buttons[index].classList.remove('secondary');buttons[index].classList.add('active'); buttons.forEach((b,i)=>{b.style.background=i===index?'#2375b9':'#e8eef4'; b.style.color=i===index?'#fff':'#203a5d';});}
+  if(buttons[index]){buttons[index].classList.remove('secondary');buttons[index].classList.add('active');}
   renderPoseurLogements();
 }
 function renderPoseurLogements(){
