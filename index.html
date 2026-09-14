@@ -27,6 +27,7 @@ hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 .password-wrap{position:relative;display:flex;align-items:center;margin-bottom:10px}
 .password-wrap input{width:100%;padding-right:48px;margin-bottom:0}
 .password-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;cursor:pointer;font-size:20px;padding:6px;line-height:1}
+.password-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:20px}.password-modal.show{display:flex}.password-modal-box{background:#fff;border-radius:16px;max-width:520px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.25)}.password-generated{display:flex;gap:8px;align-items:center;margin:14px 0}.password-generated input{flex:1;font-size:20px;font-weight:700;letter-spacing:1px;margin:0}.password-generated button{white-space:nowrap}.password-modal-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 </style>
 </style>
 <style>
@@ -288,16 +289,55 @@ async function deletePoseur(poseurId){
   managePoseurs();
 }
 
+function generatePoseurPassword(){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+  const values=new Uint32Array(14);
+  crypto.getRandomValues(values);
+  return Array.from(values,v=>chars[v%chars.length]).join('');
+}
+
+function openPasswordModal(poseurName,password){
+  document.getElementById('passwordModalText').textContent='Mot de passe attribué à '+poseurName+'. Note-le ou copie-le pour le transmettre au poseur.';
+  document.getElementById('generatedPassword').value=password;
+  document.getElementById('generatedPassword').type='text';
+  document.getElementById('generatedPasswordEye').textContent='🙈';
+  document.getElementById('passwordCopyMsg').textContent='';
+  document.getElementById('passwordModal').classList.add('show');
+}
+
+function closePasswordModal(){
+  document.getElementById('passwordModal').classList.remove('show');
+}
+
+function toggleGeneratedPassword(){
+  const input=document.getElementById('generatedPassword');
+  const btn=document.getElementById('generatedPasswordEye');
+  const show=input.type==='password';
+  input.type=show?'text':'password';
+  btn.textContent=show?'🙈':'👁️';
+}
+
+async function copyGeneratedPassword(){
+  const input=document.getElementById('generatedPassword');
+  const msg=document.getElementById('passwordCopyMsg');
+  try{
+    await navigator.clipboard.writeText(input.value);
+    msg.className='ok';
+    msg.textContent='✅ Mot de passe copié.';
+  }catch(e){
+    input.select();
+    document.execCommand('copy');
+    msg.className='ok';
+    msg.textContent='✅ Mot de passe copié.';
+  }
+}
+
 async function changePoseurPassword(poseurId, poseurName){
-  const newPassword=prompt('Nouveau mot de passe pour '+poseurName+'\n\nMinimum 4 caractères :');
-  if(newPassword===null) return;
-  if(newPassword.length<4){alert('Le mot de passe doit contenir au moins 4 caractères.');return;}
-  const confirmPassword=prompt('Confirme le nouveau mot de passe :');
-  if(confirmPassword===null) return;
-  if(newPassword!==confirmPassword){alert('Les deux mots de passe ne correspondent pas.');return;}
+  const newPassword=generatePoseurPassword();
+  if(!confirm('Générer un nouveau mot de passe pour '+poseurName+' ?\n\nSon ancien mot de passe ne sera plus valable.')) return;
   const {data,error}=await supabaseClient.functions.invoke('update-poseur-password',{body:{user_id:poseurId,password:newPassword}});
   if(error || !data?.ok){alert('Impossible de modifier le mot de passe : '+(error?.message||data?.error||'Erreur inconnue'));return;}
-  alert('Mot de passe modifié pour '+poseurName+'.');
+  openPasswordModal(poseurName,newPassword);
 }
 
 async function createPoseur(){
@@ -908,5 +948,20 @@ async function deletePhoto(photoId,path,logementId){
 
 init();
 </script>
+<div id="passwordModal" class="password-modal" onclick="if(event.target===this) closePasswordModal()">
+  <div class="password-modal-box">
+    <h3 style="margin-top:0">🔐 Nouveau mot de passe</h3>
+    <p id="passwordModalText" class="small">Un nouveau mot de passe a été généré.</p>
+    <div class="password-generated">
+      <input id="generatedPassword" type="text" readonly>
+      <button type="button" class="btn secondary" onclick="toggleGeneratedPassword()" id="generatedPasswordEye">👁️</button>
+      <button type="button" class="btn" onclick="copyGeneratedPassword()">📋 Copier</button>
+    </div>
+    <div id="passwordCopyMsg" class="small"></div>
+    <div class="password-modal-actions">
+      <button type="button" class="btn secondary" onclick="closePasswordModal()">Fermer</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
