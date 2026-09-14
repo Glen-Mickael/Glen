@@ -22,6 +22,12 @@ hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 .modal-backdrop{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:14px;z-index:1000}.modal{background:#fff;border-radius:18px;max-width:760px;width:100%;padding:18px;box-shadow:0 15px 50px #0005}.sig-wrap{border:2px dashed #9aa8b5;border-radius:12px;background:#fff;touch-action:none}.sig-wrap canvas{width:100%;height:220px;display:block;border-radius:10px;touch-action:none}.sig-note{font-size:13px;color:#66727e;margin:8px 0}.modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
 .status-badge{display:inline-block;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#eef2f7;color:#334155}.status-done{background:#dcfce7;color:#166534}.status-todo{background:#fef3c7;color:#92400e}.validate-box{margin-top:16px;padding:14px;border:1px solid #dbe3ea;border-radius:12px;background:#f8fafc}.validate-box h3{margin-top:0}.done-note{font-size:13px;color:#166534;margin-top:8px}
 .progress-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0}.progress-stats>div{border:1px solid #dce3e9;border-radius:14px;padding:14px;text-align:center;background:#f8fafc}.progress-stats b{display:block;font-size:28px}.progress-stats span{display:block;font-size:13px;color:#66727e;margin-top:4px}.filter-row{margin:12px 0}.filter-btn{flex:1;min-width:120px}@media(max-width:600px){.progress-stats{grid-template-columns:1fr 1fr}.progress-stats>div:first-child{grid-column:1/-1}}
+
+<style>
+.password-wrap{position:relative;display:flex;align-items:center;margin-bottom:10px}
+.password-wrap input{width:100%;padding-right:48px;margin-bottom:0}
+.password-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;cursor:pointer;font-size:20px;padding:6px;line-height:1}
+</style>
 </style>
 <style>
 .work-checks{margin-top:24px}
@@ -153,11 +159,20 @@ function loginView(){
   app.innerHTML=`<div class="card">
     <h2>Connexion</h2>
     <label>Email</label><input id="email" type="email" autocomplete="username">
-    <label>Mot de passe</label><input id="password" type="password" autocomplete="current-password">
+    <label>Mot de passe</label><div class="password-wrap"><input id="password" type="password" autocomplete="current-password"><button type="button" class="password-eye" onclick="togglePassword('password',this)" aria-label="Afficher le mot de passe">👁️</button></div>
     <button class="btn" onclick="login()">Se connecter</button>
     <div id="msg"></div>
   </div>`;
 }
+function togglePassword(id,button){
+  const input=document.getElementById(id);
+  if(!input) return;
+  const show=input.type==='password';
+  input.type=show?'text':'password';
+  button.textContent=show?'🙈':'👁️';
+  button.setAttribute('aria-label',show?'Masquer le mot de passe':'Afficher le mot de passe');
+}
+
 async function login(){
   const msg=document.getElementById("msg");
   msg.className="";
@@ -227,7 +242,7 @@ async function managePoseurs(){
       <h3>➕ Nouveau poseur</h3>
       <label>Nom / prénom</label><input id="newPoseurName" type="text" placeholder="Ex. Damien Dumas" autocomplete="name">
       <label>Email</label><input id="newPoseurEmail" type="email" placeholder="poseur@glen.fr" autocomplete="email">
-      <label>Mot de passe provisoire</label><input id="newPoseurPassword" type="password" placeholder="Minimum 4 caractères" autocomplete="new-password">
+      <label>Mot de passe provisoire</label><div class="password-wrap"><input id="newPoseurPassword" type="password" placeholder="Minimum 4 caractères" autocomplete="new-password"><button type="button" class="password-eye" onclick="togglePassword('newPoseurPassword',this)" aria-label="Afficher le mot de passe">👁️</button></div>
       <button class="btn" onclick="createPoseur()">➕ Créer le compte poseur</button>
       <div id="poseurCreateMsg"></div>
     </div>
@@ -238,7 +253,7 @@ async function managePoseurs(){
       </div>
       <label class="select-all-poseurs"><input type="checkbox" id="selectAllPoseurs" onchange="toggleAllPoseurs(this.checked)"><span>Sélectionner tous</span></label>
       <div class="poseurs-list">
-      ${(poseurs||[]).length ? (poseurs||[]).map(p=>`<div class="poseur-card"><input type="checkbox" class="poseurSelect" value="${p.id}"><div class="poseur-info"><div class="poseur-name">👷 ${esc(p.full_name||'Poseur')}</div><div class="small">${esc(p.email||'')}</div></div><button class="btn danger poseur-delete-one" onclick="deletePoseur('${p.id}')">🗑️ Supprimer</button></div>`).join('') : '<p class="small">Aucun poseur pour le moment.</p>'}
+      ${(poseurs||[]).length ? (poseurs||[]).map(p=>`<div class="poseur-card"><input type="checkbox" class="poseurSelect" value="${p.id}"><div class="poseur-info"><div class="poseur-name">👷 ${esc(p.full_name||'Poseur')}</div><div class="small">${esc(p.email||'')}</div></div><div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn secondary" onclick="changePoseurPassword('${p.id}','${esc(p.full_name||p.email||'Poseur').replace("'","\\'")}')">🔑 Modifier le mot de passe</button><button class="btn danger poseur-delete-one" onclick="deletePoseur('${p.id}')">🗑️ Supprimer</button></div></div>`).join('') : '<p class="small">Aucun poseur pour le moment.</p>'}
       </div>
     </div>
     <div class="item" style="background:#fff8e6"><b>🔐 Sécurité</b><p class="small">La création et la suppression des comptes passent par des fonctions sécurisées Supabase. La clé secrète n'est jamais envoyée au navigateur.</p></div>
@@ -271,6 +286,18 @@ async function deletePoseur(poseurId){
   if(fnError || !data?.ok){alert('Impossible de supprimer le compte : '+(fnError?.message||data?.error||'Erreur inconnue'));return;}
   alert('Poseur supprimé.');
   managePoseurs();
+}
+
+async function changePoseurPassword(poseurId, poseurName){
+  const newPassword=prompt('Nouveau mot de passe pour '+poseurName+'\n\nMinimum 4 caractères :');
+  if(newPassword===null) return;
+  if(newPassword.length<4){alert('Le mot de passe doit contenir au moins 4 caractères.');return;}
+  const confirmPassword=prompt('Confirme le nouveau mot de passe :');
+  if(confirmPassword===null) return;
+  if(newPassword!==confirmPassword){alert('Les deux mots de passe ne correspondent pas.');return;}
+  const {data,error}=await supabaseClient.functions.invoke('update-poseur-password',{body:{user_id:poseurId,password:newPassword}});
+  if(error || !data?.ok){alert('Impossible de modifier le mot de passe : '+(error?.message||data?.error||'Erreur inconnue'));return;}
+  alert('Mot de passe modifié pour '+poseurName+'.');
 }
 
 async function createPoseur(){
