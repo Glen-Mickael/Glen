@@ -89,6 +89,29 @@ hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 }
 </style>
 
+
+<style>
+.poseurs-box{padding:18px}
+.poseurs-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}
+.poseurs-header h3{margin:0;font-size:21px}
+.poseurs-count{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;padding:0 9px;margin-left:6px;border-radius:999px;background:#e8eef4;color:#203a5d;font-size:14px}
+.select-all-poseurs{display:flex!important;align-items:center!important;gap:10px!important;width:auto!important;margin:0 0 12px!important;padding:10px 12px!important;border:1px solid #dce3e9!important;border-radius:10px!important;background:#f8fafc!important;font-weight:700!important;cursor:pointer}
+.select-all-poseurs input{width:20px!important;height:20px!important;flex:0 0 auto!important;margin:0!important}
+.poseurs-list{display:flex;flex-direction:column;gap:10px}
+.poseur-card{display:flex;align-items:center;gap:14px;padding:13px 14px;border:1px solid #dce3e9;border-radius:13px;background:#fff}
+.poseur-card:hover{background:#f8fafc}
+.poseurSelect{width:20px!important;height:20px!important;flex:0 0 auto!important;margin:0!important}
+.poseur-info{flex:1;min-width:0}
+.poseur-name{font-weight:700;font-size:17px;margin-bottom:3px}
+.poseur-delete-one{white-space:nowrap;background:#c62828!important;padding:10px 14px!important}
+.poseurs-delete-all{white-space:nowrap;background:#c62828!important}
+@media(max-width:650px){
+  .poseurs-header{align-items:stretch;flex-direction:column}
+  .poseurs-delete-all{width:100%}
+  .poseur-card{align-items:flex-start}
+  .poseur-delete-one{margin-left:auto}
+}
+</style>
 </head>
 <body>
 <header><h1>GLEN</h1><p>Gestion des chantiers et logements</p></header>
@@ -200,13 +223,15 @@ async function managePoseurs(){
       <button class="btn" onclick="createPoseur()">➕ Créer le compte poseur</button>
       <div id="poseurCreateMsg"></div>
     </div>
-    <div class="item">
-      <div class="row" style="justify-content:space-between;align-items:center">
-        <h3 style="margin:0">👷 Poseurs existants (${(poseurs||[]).length})</h3>
-        <button class="btn" style="background:#c62828" onclick="deleteSelectedPoseurs()">🗑️ Supprimer la sélection</button>
+    <div class="item poseurs-box">
+      <div class="poseurs-header">
+        <h3>👷 Poseurs existants <span class="poseurs-count">${(poseurs||[]).length}</span></h3>
+        <button class="btn danger poseurs-delete-all" onclick="deleteSelectedPoseurs()">🗑️ Supprimer la sélection</button>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-weight:700"><input type="checkbox" id="selectAllPoseurs" onchange="toggleAllPoseurs(this.checked)"> Sélectionner tous</label>
-      ${(poseurs||[]).length ? (poseurs||[]).map(p=>`<div style="margin-top:10px;padding:12px;border:1px solid #dce3e9;border-radius:12px;display:flex;align-items:center;gap:12px"><input type="checkbox" class="poseurSelect" value="${p.id}"><div style="flex:1"><div style="font-weight:700">👷 ${esc(p.full_name||'Poseur')}</div><div class="small">${esc(p.email||'')}</div></div><button class="btn" style="background:#c62828" onclick="deletePoseur('${p.id}')">🗑️ Supprimer</button></div>`).join('') : '<p class="small">Aucun poseur pour le moment.</p>'}
+      <label class="select-all-poseurs"><input type="checkbox" id="selectAllPoseurs" onchange="toggleAllPoseurs(this.checked)"><span>Sélectionner tous</span></label>
+      <div class="poseurs-list">
+      ${(poseurs||[]).length ? (poseurs||[]).map(p=>`<div class="poseur-card"><input type="checkbox" class="poseurSelect" value="${p.id}"><div class="poseur-info"><div class="poseur-name">👷 ${esc(p.full_name||'Poseur')}</div><div class="small">${esc(p.email||'')}</div></div><button class="btn danger poseur-delete-one" onclick="deletePoseur('${p.id}')">🗑️ Supprimer</button></div>`).join('') : '<p class="small">Aucun poseur pour le moment.</p>'}
+      </div>
     </div>
     <div class="item" style="background:#fff8e6"><b>🔐 Sécurité</b><p class="small">La création et la suppression des comptes passent par des fonctions sécurisées Supabase. La clé secrète n'est jamais envoyée au navigateur.</p></div>
   </div>`;
