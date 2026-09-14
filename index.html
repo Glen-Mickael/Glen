@@ -204,9 +204,17 @@ async function adminHome(){
     <p class="small">Créé le ${new Date(c.created_at).toLocaleDateString("fr-FR")}</p>
     <div class="row" style="justify-content:space-between"><span>🏠 ${s.total} logements</span><span>✅ ${s.done} terminés</span><span>⏳ ${todo} à faire</span><b>${pct}%</b></div>
     <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:8px 0 12px"><div style="height:100%;width:${pct}%;background:#16a34a;border-radius:999px"></div></div>
-    <div class="row"><button class="btn" onclick="openChantier('${c.id}')">Ouvrir le chantier</button></div>
+    <div class="row" style="gap:10px;flex-wrap:wrap"><button class="btn" onclick="openChantier('${c.id}')">Ouvrir le chantier</button><button class="btn danger" onclick="deleteChantier('${c.id}','${esc(c.nom).replace("'","\\'")}')">🗑️ Supprimer le chantier</button></div>
   </div>`;}).join(""):"<p class='small'>Aucun chantier créé.</p>"}</div></div>`;
 }
+async function deleteChantier(chantierId, chantierNom){
+  if(!confirm('Supprimer le chantier « '+chantierNom+' » ?\n\nCette action supprimera définitivement le chantier, ses logements et leurs affectations aux poseurs.')) return;
+  const {error}=await supabaseClient.from('chantiers').delete().eq('id',chantierId);
+  if(error){alert('Impossible de supprimer le chantier : '+error.message);return;}
+  alert('Chantier supprimé.');
+  await adminHome();
+}
+
 async function managePoseurs(){
   const {data:poseurs,error}=await supabaseClient.from('profiles').select('id,email,full_name,created_at').eq('role','poseur').order('email');
   if(error){alert(error.message);return;}
