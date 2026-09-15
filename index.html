@@ -28,6 +28,24 @@ hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 .password-wrap input{width:100%;padding-right:48px;margin-bottom:0}
 .password-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;cursor:pointer;font-size:20px;padding:6px;line-height:1}
 .password-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:20px}.password-modal.show{display:flex}.password-modal-box{background:#fff;border-radius:16px;max-width:520px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.25)}.password-generated{display:flex;gap:8px;align-items:center;margin:14px 0}.password-generated input{flex:1;font-size:20px;font-weight:700;letter-spacing:1px;margin:0}.password-generated button{white-space:nowrap}.password-modal-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.password-modal .password-wrap{margin-bottom:10px}
+.remember-row{display:flex;align-items:center;gap:8px;margin:4px 0 14px;font-weight:500;color:#334155}
+.remember-row input{width:18px;height:18px;margin:0;accent-color:#2375b9}
+.forgot-link{display:block;width:100%;border:0;background:none;color:#2375b9;text-decoration:underline;cursor:pointer;font-size:15px;padding:8px 0;margin-top:4px}
+.login-actions{margin-top:4px}
+.pdf-mobile-note{display:none}
+@media(max-width:600px){
+  .modal-backdrop{align-items:stretch;padding:0}
+  .modal{max-width:none;width:100%;height:100%;max-height:none!important;border-radius:0;padding:16px;overflow:auto;-webkit-overflow-scrolling:touch}
+  .modal-actions{position:sticky;bottom:0;background:#fff;padding-top:10px;padding-bottom:calc(8px + env(safe-area-inset-bottom));z-index:2}
+  .fill-field input[type=text],.fill-field input[type=date],.fill-field select{font-size:17px;min-height:46px}
+  .checkbox-field{min-height:44px}
+  .pdf-mobile-note{display:block}
+  .password-modal{padding:10px}
+  .password-modal-box{max-height:94vh;overflow:auto}
+  .password-modal .password-wrap input{font-size:17px}
+}
+
 </style>
 </style>
 <style>
@@ -161,15 +179,23 @@ async function init(){
 }
 
 function loginView(){
+  const savedEmail=localStorage.getItem('glenRememberEmail')||'';
   app.innerHTML=`<div class="card">
     <h2>Connexion</h2>
-    <label>Email</label><input id="email" type="email" autocomplete="username">
-    <label>Mot de passe</label><div class="password-wrap"><input id="password" type="password" autocomplete="current-password"><button type="button" class="password-eye" onclick="togglePassword('password',this)" aria-label="Afficher le mot de passe">👁️</button></div>
-    <button class="btn" onclick="login()">Se connecter</button>
-    <div style="margin-top:12px;text-align:center"><button type="button" onclick="forgotPassword()" style="border:0;background:none;color:#2375b9;text-decoration:underline;cursor:pointer;font-size:14px">Mot de passe oublié ?</button></div>
+    <label>Email</label>
+    <input id="email" type="email" autocomplete="username" value="${esc(savedEmail)}" placeholder="Votre adresse email">
+    <label>Mot de passe</label>
+    <div class="password-wrap">
+      <input id="password" type="password" autocomplete="current-password" placeholder="Votre mot de passe">
+      <button type="button" class="password-eye" onclick="togglePassword('password',this)" aria-label="Afficher le mot de passe">👁️</button>
+    </div>
+    <label class="remember-row"><input id="rememberMe" type="checkbox" ${savedEmail?'checked':''}> <span>Se souvenir de moi</span></label>
+    <div class="login-actions"><button class="btn" onclick="login()">Se connecter</button></div>
+    <button type="button" class="forgot-link" onclick="forgotPassword()">Mot de passe oublié ?</button>
     <div id="msg"></div>
   </div>`;
 }
+
 async function forgotPassword(){
   const email=(document.getElementById('email')?.value||'').trim().toLowerCase();
   if(!email){alert('Indique d’abord ton adresse email.');document.getElementById('email')?.focus();return;}
@@ -211,11 +237,12 @@ function togglePassword(id,button){
 
 async function login(){
   const msg=document.getElementById("msg");
+  const email=document.getElementById("email").value.trim().toLowerCase();
+  const password=document.getElementById("password").value;
   msg.className="";
-  const {error}=await supabaseClient.auth.signInWithPassword({
-    email:document.getElementById("email").value.trim(),
-    password:document.getElementById("password").value
-  });
+  if(document.getElementById('rememberMe')?.checked) localStorage.setItem('glenRememberEmail',email);
+  else localStorage.removeItem('glenRememberEmail');
+  const {error}=await supabaseClient.auth.signInWithPassword({email,password});
   if(error){msg.className="error";msg.textContent="Connexion impossible : "+error.message;return;}
   await loadProfile();
 }
@@ -581,8 +608,8 @@ async function openLogement(id,mode='poseur'){
     <hr><h3>📄 Document PDF original</h3>
     ${mode==='admin'?`<label class="btn file-label">📄 ${pdf?'Remplacer le PDF':'Ajouter le PDF original'}<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadPdf('${l.id}',this.files[0])"></label>`:''}
     <div id="pdfMsg"></div>
-    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="openPdf('${pdf.id}')">📄 Ouvrir le PDF</button>${mode==='admin'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir / Enregistrer</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Entreprise</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Locataire</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:mode==='poseur'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Modifier / remplir le PDF</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Signer locataire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Signer gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Signer entreprise</button>`:''}</div></div>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
-    <p class="small">Le fichier reste un vrai PDF avec ses champs modifiables. Sur téléphone, utilise « Modifier / remplir le PDF » : le lecteur PDF du téléphone peut seulement afficher le document.</p>
+    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn secondary" onclick="openPdf('${pdf.id}')">📄 Voir le PDF</button>${mode==='admin'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Modifier / remplir</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Entreprise</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Locataire</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:mode==='poseur'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Modifier / remplir le PDF</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Signer locataire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Signer gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Signer entreprise</button>`:''}</div></div>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
+    <p class="small">Le fichier reste un vrai PDF avec ses champs modifiables. <b>Sur téléphone, il faut utiliser « ✏️ Modifier / remplir » dans GLEN</b> : le lecteur PDF du téléphone sert uniquement à afficher le document.</p><p class="small pdf-mobile-note">📱 Sur iPhone/Android, touche « ✏️ Modifier / remplir » pour ouvrir le formulaire directement dans GLEN. Après « Enregistrer », le PDF conserve ses champs modifiables.</p>
     <hr><div class="validate-box"><h3>📋 État du logement</h3><div class="status-badge ${l.statut==='Terminé'?'status-done':'status-todo'}">${l.statut==='Terminé'?'✅ Logement terminé':'⏳ Logement à faire'}</div>${l.statut==='Terminé'&&l.termine_at?`<div class="done-note">Terminé le ${new Date(l.termine_at).toLocaleString('fr-FR')}</div>`:''}${mode==='poseur'?`<div style="margin-top:12px">${l.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir le logement</button>`:`<button class="btn" onclick="setLogementStatus('${l.id}','Terminé')">✅ Terminer / Valider le logement</button>`}</div><p class="small">À utiliser uniquement lorsque les photos et le dossier du logement sont terminés.</p>`:''}${mode==='admin'&&l.statut==='Terminé'?`<div style="margin-top:12px"><button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir le logement</button></div>`:''}<div id="statusMsg"></div></div>
     <hr><h3>Photos</h3>
     ${mode==='poseur'?`<div class="row">
