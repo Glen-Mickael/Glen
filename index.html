@@ -152,6 +152,10 @@ async function init(){
   }
   supabaseClient = window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
   const {data:{session}} = await supabaseClient.auth.getSession();
+  if(window.location.hash.includes('type=recovery')){
+    showRecoveryView();
+    return;
+  }
   if(session) await loadProfile();
   else loginView();
 }
@@ -162,9 +166,40 @@ function loginView(){
     <label>Email</label><input id="email" type="email" autocomplete="username">
     <label>Mot de passe</label><div class="password-wrap"><input id="password" type="password" autocomplete="current-password"><button type="button" class="password-eye" onclick="togglePassword('password',this)" aria-label="Afficher le mot de passe">👁️</button></div>
     <button class="btn" onclick="login()">Se connecter</button>
+    <div style="margin-top:12px;text-align:center"><button type="button" onclick="forgotPassword()" style="border:0;background:none;color:#2375b9;text-decoration:underline;cursor:pointer;font-size:14px">Mot de passe oublié ?</button></div>
     <div id="msg"></div>
   </div>`;
 }
+async function forgotPassword(){
+  const email=(document.getElementById('email')?.value||'').trim().toLowerCase();
+  if(!email){alert('Indique d’abord ton adresse email.');document.getElementById('email')?.focus();return;}
+  const {error}=await supabaseClient.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
+  if(error){alert('Impossible d’envoyer le lien : '+error.message);return;}
+  alert('Un lien de réinitialisation a été envoyé à '+email+'.');
+}
+function showRecoveryView(){
+  app.innerHTML=`<div class="card">
+    <h2>🔐 Nouveau mot de passe</h2>
+    <p class="small">Choisis ton nouveau mot de passe. L’ancien ne sera plus valable.</p>
+    <label>Nouveau mot de passe</label><div class="password-wrap"><input id="recoveryPassword" type="password" autocomplete="new-password"><button type="button" class="password-eye" onclick="togglePassword('recoveryPassword',this)">👁️</button></div>
+    <label>Confirmer le mot de passe</label><div class="password-wrap"><input id="recoveryPassword2" type="password" autocomplete="new-password"><button type="button" class="password-eye" onclick="togglePassword('recoveryPassword2',this)">👁️</button></div>
+    <button class="btn" onclick="saveRecoveryPassword()">💾 Enregistrer le nouveau mot de passe</button>
+    <div id="recoveryMsg"></div>
+  </div>`;
+}
+async function saveRecoveryPassword(){
+  const p=document.getElementById('recoveryPassword').value;
+  const p2=document.getElementById('recoveryPassword2').value;
+  const msg=document.getElementById('recoveryMsg');
+  if(p.length<4){msg.className='error';msg.textContent='Le mot de passe doit contenir au moins 4 caractères.';return;}
+  if(p!==p2){msg.className='error';msg.textContent='Les deux mots de passe ne correspondent pas.';return;}
+  const {error}=await supabaseClient.auth.updateUser({password:p});
+  if(error){msg.className='error';msg.textContent='Erreur : '+error.message;return;}
+  history.replaceState(null,'',window.location.pathname);
+  msg.className='ok';msg.textContent='✅ Mot de passe modifié. Tu peux maintenant te connecter.';
+  setTimeout(()=>{supabaseClient.auth.signOut().then(()=>loginView())},900);
+}
+
 function togglePassword(id,button){
   const input=document.getElementById(id);
   if(!input) return;
@@ -332,12 +367,34 @@ async function copyGeneratedPassword(){
   }
 }
 
+function openCustomPoseurPasswordModal(poseurId,poseurName){
+  document.getElementById('customPasswordModal')?.remove();
+  document.body.insertAdjacentHTML('beforeend',`<div id="customPasswordModal" class="password-modal show">
+    <div class="password-modal-box">
+      <h3 style="margin-top:0">🔑 Modifier le mot de passe</h3>
+      <p class="small">Poseur : <b>${esc(poseurName)}</b></p>
+      <label>Nouveau mot de passe</label>
+      <div class="password-wrap"><input id="customPoseurPassword" type="password" autocomplete="new-password" placeholder="Minimum 4 caractères"><button type="button" class="password-eye" onclick="togglePassword('customPoseurPassword',this)">👁️</button></div>
+      <label>Confirmer le mot de passe</label>
+      <div class="password-wrap"><input id="customPoseurPassword2" type="password" autocomplete="new-password" placeholder="Retape le mot de passe"><button type="button" class="password-eye" onclick="togglePassword('customPoseurPassword2',this)">👁️</button></div>
+      <div id="customPoseurPasswordMsg"></div>
+      <div class="password-modal-actions"><button type="button" class="btn secondary" onclick="document.getElementById('customPasswordModal')?.remove()">Annuler</button><button type="button" class="btn" onclick="saveCustomPoseurPassword('${poseurId}','${esc(poseurName).replace("'","\\'")}')">💾 Enregistrer</button></div>
+    </div></div>`);
+}
 async function changePoseurPassword(poseurId, poseurName){
-  const newPassword=generatePoseurPassword();
-  if(!confirm('Générer un nouveau mot de passe pour '+poseurName+' ?\n\nSon ancien mot de passe ne sera plus valable.')) return;
-  const {data,error}=await supabaseClient.functions.invoke('update-poseur-password',{body:{user_id:poseurId,password:newPassword}});
-  if(error || !data?.ok){alert('Impossible de modifier le mot de passe : '+(error?.message||data?.error||'Erreur inconnue'));return;}
-  openPasswordModal(poseurName,newPassword);
+  openCustomPoseurPasswordModal(poseurId,poseurName);
+}
+async function saveCustomPoseurPassword(poseurId,poseurName){
+  const p=document.getElementById('customPoseurPassword')?.value||'';
+  const p2=document.getElementById('customPoseurPassword2')?.value||'';
+  const msg=document.getElementById('customPoseurPasswordMsg');
+  if(p.length<4){msg.className='error';msg.textContent='Le mot de passe doit contenir au moins 4 caractères.';return;}
+  if(p!==p2){msg.className='error';msg.textContent='Les deux mots de passe ne correspondent pas.';return;}
+  msg.className='small';msg.textContent='Modification en cours…';
+  const {data,error}=await supabaseClient.functions.invoke('update-poseur-password',{body:{user_id:poseurId,password:p}});
+  if(error || !data?.ok){msg.className='error';msg.textContent='Impossible de modifier le mot de passe : '+(error?.message||data?.error||'Erreur inconnue');return;}
+  document.getElementById('customPasswordModal')?.remove();
+  openPasswordModal(poseurName,p);
 }
 
 async function createPoseur(){
@@ -524,8 +581,8 @@ async function openLogement(id,mode='poseur'){
     <hr><h3>📄 Document PDF original</h3>
     ${mode==='admin'?`<label class="btn file-label">📄 ${pdf?'Remplacer le PDF':'Ajouter le PDF original'}<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadPdf('${l.id}',this.files[0])"></label>`:''}
     <div id="pdfMsg"></div>
-    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="openPdf('${pdf.id}')">📄 Ouvrir le PDF</button>${mode==='admin'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir / Enregistrer</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Entreprise</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Locataire</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:mode==='poseur'?`<button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Signer locataire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Signer gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Signer entreprise</button>`:''}</div></div>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
-    <p class="small">Le fichier est conservé comme PDF original, sans modification ni changement de mise en page.</p>
+    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="openPdf('${pdf.id}')">📄 Ouvrir le PDF</button>${mode==='admin'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir / Enregistrer</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Entreprise</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Locataire</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:mode==='poseur'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Modifier / remplir le PDF</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Signer locataire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','gestionnaire')">✍️ Signer gestionnaire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Signer entreprise</button>`:''}</div></div>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
+    <p class="small">Le fichier reste un vrai PDF avec ses champs modifiables. Sur téléphone, utilise « Modifier / remplir le PDF » : le lecteur PDF du téléphone peut seulement afficher le document.</p>
     <hr><div class="validate-box"><h3>📋 État du logement</h3><div class="status-badge ${l.statut==='Terminé'?'status-done':'status-todo'}">${l.statut==='Terminé'?'✅ Logement terminé':'⏳ Logement à faire'}</div>${l.statut==='Terminé'&&l.termine_at?`<div class="done-note">Terminé le ${new Date(l.termine_at).toLocaleString('fr-FR')}</div>`:''}${mode==='poseur'?`<div style="margin-top:12px">${l.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir le logement</button>`:`<button class="btn" onclick="setLogementStatus('${l.id}','Terminé')">✅ Terminer / Valider le logement</button>`}</div><p class="small">À utiliser uniquement lorsque les photos et le dossier du logement sont terminés.</p>`:''}${mode==='admin'&&l.statut==='Terminé'?`<div style="margin-top:12px"><button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir le logement</button></div>`:''}<div id="statusMsg"></div></div>
     <hr><h3>Photos</h3>
     ${mode==='poseur'?`<div class="row">
@@ -843,7 +900,7 @@ async function saveFilledPdf(){
     });
 
     // Conserve les champs du PDF original et les signatures déjà présentes.
-    const saved=await fillDoc.save({updateFieldAppearances:true});
+    const saved=await fillDoc.save({updateFieldAppearances:true, useObjectStreams:false});
     const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',fillPdfId).single();
     if(error||!pdf)throw error||new Error('PDF introuvable.');
 
