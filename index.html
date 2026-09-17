@@ -773,15 +773,45 @@ async function openFillPdf(pdfId,logementId){
     if(l && isDemoChantierName(chantier?.nom)){ addUniversalHeaderFields(fillDoc,l); }
     const F=n=>fillForm.getField(n);
     const val=n=>{try{const f=F(n);return (f.getSelected?.()[0]||f.getText?.()||'').toString().trim();}catch(e){return '';}};
-    const pdfOptions=n=>{try{const f=F(n); if(typeof f.getOptions==='function'){const o=f.getOptions()||[]; return o.map(v=>Array.isArray(v)?String(v[0]):String(v)).filter((v,i,a)=>a.indexOf(v)===i);} }catch(e){} return [];};
+    // Options exactes relevées dans le PDF universel : chaque cellule qui possède
+    // une liste dans le PDF est affichée ici comme un vrai menu déroulant.
+    const PDF_OPTIONS={
+      "Marque 1":["-","Saunier Duval","elm leblanc","Vaillant"],
+      "Marque 2":["-","Bosch","Panasonic","Saunier Duval","Vaillant"],
+      "Marque 3":["-","Saunier Duval","elm leblanc"],
+      "Spécificités 1":["-","Ventouse Horizontale","Ventouse Verticale","VMC Gaz"],
+      "Modèle 1":["-","Themaplus VMC V25","Themaplus Condens F25","Themaplus Condens F30","IsoTwin Condens F25","Acleis VMC 24","Oxylis Condens 18-24","Oxylis Condens 24-30","ecoTEC Pro 28","ecoTEC Plus 32","ecoTEC Plus VCI 32"],
+      "Modèle 2":["-","Compress 3008i","aroTHERM Pro","Aquarea"],
+      "Modèle 3":["-","Opalia C 11","Opalia C 14","Opalia F 12","Opalia F 15","Opalia F 17","Ondea LC11 BasNox","Ondea LC14 BasNox","Ondea LC 12","Ondea LC 15","Ondea LC 17"],
+      "Spécificités 2":["-","3 kw","4 kw","5 kw","6 kw","7 kw","8 kw","9 kw","10 kw","11 kw","12 kw","13 kw","14 kw"],
+      "Marque 4":["-","Atlantic"],"Marque 5":["-","Atlantic"],"Marque 6":["-","Atlantic"],"Marque 7":["-","Atlantic"],"Marque 8":["-","Atlantic"],"Marque 9":["-","Atlantic"],"Marque 10":["-","Atlantic"],"Marque 11":["-","Atlantic"],
+      "Modèle 4":["-","Naria NKF15","Agilia"],"Modèle 5":["-","Naria NKF15","Agilia"],"Modèle 6":["-","Naria NKF15","Agilia"],"Modèle 7":["-","Naria NKF15","Agilia"],"Modèle 8":["-","Naria NKF15","Agilia"],"Modèle 9":["-","Naria NKF15","Agilia"],
+      "Modèle 10":["-","Lunis"],"Modèle 11":["-","Lunis"],
+      "Spécificités 3":["-","Ventouse Horizontale","Ventouse Verticale","VMC Gaz"],
+      "Spécificités 4":["-","Inertie Fluide","Inertie Sèche"],"Spécificités 5":["-","Inertie Fluide","Inertie Sèche"],"Spécificités 6":["-","Inertie Fluide","Inertie Sèche"],"Spécificités 7":["-","Inertie Fluide","Inertie Sèche"],"Spécificités 8":["-","Inertie Fluide","Inertie Sèche"],"Spécificités 9":["-","Inertie Fluide","Inertie Sèche"],"Spécificités 10":["-","Inertie Fluide","Inertie Sèche"],"Spécificités 11":["-","Inertie Fluide","Inertie Sèche"],
+      "Marque 12":["-","Atlantic"],"Marque 13":["-","Atlantic"],"Marque 14":["-","Atlantic"],"Marque 15":["-","Atlantic"],
+      "Spécificités 12":["-","Stéatite","Blindé"],"Spécificités 13":["-","Stéatite","Blindé"],"Spécificités 14":["-","Stéatite","Blindé"],"Spécificités 15":["-","Hygro Réglabe A","Hygro Réglabe B","Auto Réglable"],
+      "Marque 16":["-","Nather","Aldes","Atlantic"],"Modèle 16":["-","hygro Infinity BC","EasyVEC C4 PRO"],"Spécificités 16":["-","Hygro Réglabe B","Hygro Réglabe A","Auto Réglable"],
+      "Marque 17":["-","Anjos","Aldes","Atlantic"],"Modèle 17":["-","BAHIA","Alizé"],"Spécificités 17":["-","Hygro Réglabe B","Hygro Réglabe A","Auto Réglable"],
+      "Marque 18":["-","Jacob Delafon","Nobili"],"Modèle 18":["-","Deseo"],"Spécificités 18":["-","Mitigeur","Thermostatique"],
+      "Marque 19":["-","Jacob Delafon","Nobili"],"Spécificités 19":["-","Mitigeur","Thermostatique"],
+      "Marque 20":["-","Jacob Delafon","Nobili"],"Spécificités 20":["-","Mitigeur","Thermostatique"],
+      "Marque 21":["-","Jacob Delafon","Nobili"],"Spécificités 21":["-","Mitigeur","Thermostatique"],
+      "Marque 22":["-","Wirquin"],"Spécificités 22":["-","Bain/Douche"]
+    };
+    const QTY_OPTIONS={
+      "Nombre 1":["-","1","2","3"],"Nombre 2":["-","1","2","3"],"Nombre 3":["-","1","2","3"],
+      "Nombre 4":["-","1","2","3","4","5","6","7","8","9","10"],"Nombre 5":["-","1","2","3","4","5","6","7","8","9","10"],"Nombre 6":["-","1","2","3","4","5","6","7","8","9","10"],
+      "Nombre 7":["-","1","2","3"],"Nombre 8":["-","1","2","3","4"],"Nombre 9":["-","1","2","3","4"],"Nombre 10":["-","1","2","3","4"],"Nombre 11":["-","1","2","3","4"],
+      "Nombre 12":["-","1","2","3","4"],"Nombre 13":["-","1","2","3","4"],"Nombre 14":["-","1","2","3","4"],"Nombre 15":["-","1","2","3","4"],
+      "Nombre 16":["-","1","2","3","4"],"Nombre 17":["-","1","2","3","4","5","6","7","8"],"Nombre 18":["-","1","2","3","4"],"Nombre 19":["-","1","2","3","4","5","6","7","8"],"Nombre 20":["-","1","2","3","4"],"Nombre 21":["-","1","2","3","4"],"Nombre 22":["-","1","2","3","4"]
+    };
+    const pdfOptions=n=>PDF_OPTIONS[n]||QTY_OPTIONS[n]||[];
     const fieldText=(name,label,chapter,placeholder='')=>{
-      const opts=pdfOptions(name);
-      return opts.length?{name,label,chapter,type:'select',value:val(name),options:opts}:{name,label,chapter,type:'text',value:val(name)||placeholder};
+      const opts=PDF_OPTIONS[name];
+      return opts?{name,label,chapter,type:'select',value:val(name),options:opts}:{name,label,chapter,type:'text',value:val(name)||placeholder};
     };
-    const fieldQty=(name,label,chapter)=>{
-      const opts=pdfOptions(name);
-      return {name,label,chapter,type:'qty',value:val(name),options:opts.length?opts:['-','1','2','3','4','5','6','7','8','9','10']};
-    };
+    const fieldQty=(name,label,chapter)=>({name,label,chapter,type:'qty',value:val(name),options:QTY_OPTIONS[name]||['-','1','2','3','4','5','6','7','8','9','10']});
     const fieldCheck=(name,label,chapter)=>({name,label,chapter,type:'check',value:(()=>{try{return F(name).isChecked()}catch(e){return false}})()});
     const fields=[
       fieldText('GLEN_MaitreOuvrage','Maître d’Ouvrage',1),fieldText('GLEN_Region','Région',1),fieldText('GLEN_NumProgramme','N° du programme',1),fieldText('GLEN_NumLot','N° du Lot',1),
@@ -797,10 +827,10 @@ async function openFillPdf(pdfId,logementId){
       fieldText('Marque 9','Radiateur 2000 W — Marque',4),fieldText('Modèle 9','Radiateur 2000 W — Modèle',4),fieldQty('Nombre 9','Radiateur 2000 W — Nombre',4),
       fieldText('Marque 10','Sèche-serviette 500 W — Marque',4),fieldText('Modèle 10','Sèche-serviette 500 W — Modèle',4),fieldQty('Nombre 10','Sèche-serviette 500 W — Nombre',4),
       fieldText('Marque 11','Sèche-serviette 750 W — Marque',4),fieldText('Modèle 11','Sèche-serviette 750 W — Modèle',4),fieldQty('Nombre 11','Sèche-serviette 750 W — Nombre',4),
-      fieldText('Marque 12','Eau chaude 150 L — Marque',5),fieldText('Modèle 12','Eau chaude 150 L — Modèle',5),fieldText('Spécificités 12','Eau chaude 150 L — Spécificités',5),fieldQty('Nombre 14','Eau chaude 150 L — Nombre',5),
-      fieldText('Marque 13','Eau chaude 200 L — Marque',5),fieldText('Modèle 13','Eau chaude 200 L — Modèle',5),fieldText('Spécificités 13','Eau chaude 200 L — Spécificités',5),fieldQty('Nombre 13','Eau chaude 200 L — Nombre',5),
-      fieldText('Marque 14','Eau chaude 250 L — Marque',5),fieldText('Modèle 14','Eau chaude 250 L — Modèle',5),fieldText('Spécificités 14','Eau chaude 250 L — Spécificités',5),fieldQty('Nombre 12','Eau chaude 250 L — Nombre',5),
-      fieldText('Marque 15','Eau chaude 300 L — Marque',5),fieldText('Modèle 15','Eau chaude 300 L — Modèle',5),fieldText('Spécificités 15','Eau chaude 300 L — Spécificités',5),fieldQty('Nombre 15','Eau chaude 300 L — Nombre',5),
+      fieldText('Marque 12','Eau chaude 150 L — Marque',5),fieldText('Spécificités 12','Eau chaude 150 L — Spécificités',5),fieldQty('Nombre 14','Eau chaude 150 L — Nombre',5),
+      fieldText('Marque 13','Eau chaude 200 L — Marque',5),fieldText('Spécificités 13','Eau chaude 200 L — Spécificités',5),fieldQty('Nombre 13','Eau chaude 200 L — Nombre',5),
+      fieldText('Marque 14','Eau chaude 250 L — Marque',5),fieldText('Spécificités 14','Eau chaude 250 L — Spécificités',5),fieldQty('Nombre 12','Eau chaude 250 L — Nombre',5),
+      fieldText('Marque 15','Eau chaude 300 L — Marque',5),fieldText('Spécificités 15','Eau chaude 300 L — Spécificités',5),fieldQty('Nombre 15','Eau chaude 300 L — Nombre',5),
       fieldText('Marque 16','Caissons — Marque',6),fieldText('Modèle 16','Caissons — Modèle',6),fieldText('Spécificités 16','Caissons — Spécificités',6),fieldQty('Nombre 16','Caissons — Nombre',6),
       fieldText('Marque 17','Bouches d’extraction — Marque',6),fieldText('Modèle 17','Bouches d’extraction — Modèle',6),fieldText('Spécificités 17','Bouches d’extraction — Spécificités',6),fieldQty('Nombre 17','Bouches d’extraction — Nombre',6),
       fieldText('Marque 18','Mitigeur évier — Marque',7),fieldText('Modèle 18','Mitigeur évier — Modèle',7),fieldText('Spécificités 18','Mitigeur évier — Spécificités',7),fieldQty('Nombre 18','Mitigeur évier — Nombre',7),
