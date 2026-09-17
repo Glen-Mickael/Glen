@@ -22,7 +22,7 @@ hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 .modal-backdrop{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:14px;z-index:1000}.modal{background:#fff;border-radius:18px;max-width:760px;width:100%;padding:18px;box-shadow:0 15px 50px #0005}.sig-wrap{border:2px dashed #9aa8b5;border-radius:12px;background:#fff;touch-action:none}.sig-wrap canvas{width:100%;height:220px;display:block;border-radius:10px;touch-action:none}.sig-note{font-size:13px;color:#66727e;margin:8px 0}.modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
 .status-badge{display:inline-block;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#eef2f7;color:#334155}.status-done{background:#dcfce7;color:#166534}.status-todo{background:#fef3c7;color:#92400e}.validate-box{margin-top:16px;padding:14px;border:1px solid #dbe3ea;border-radius:12px;background:#f8fafc}.validate-box h3{margin-top:0}.done-note{font-size:13px;color:#166534;margin-top:8px}
 .progress-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0}.progress-stats>div{border:1px solid #dce3e9;border-radius:14px;padding:14px;text-align:center;background:#f8fafc}.progress-stats b{display:block;font-size:28px}.progress-stats span{display:block;font-size:13px;color:#66727e;margin-top:4px}.filter-row{margin:12px 0}.filter-btn{flex:1;min-width:120px}@media(max-width:600px){.progress-stats{grid-template-columns:1fr 1fr}.progress-stats>div:first-child{grid-column:1/-1}}
-.chapter{border:1px solid #dce3e9;border-radius:12px;margin:10px 0;background:#f8fafc;overflow:hidden}.chapter summary{padding:14px;cursor:pointer;font-size:17px;color:#203a5d}.chapter-body{padding:10px 14px 14px;background:#fff}.chapter .fill-field{margin:10px 0}.subchapter{border:1px solid #e1e7ec;border-radius:10px;margin:8px 0;background:#fbfcfd;overflow:hidden}.subchapter summary{padding:12px 14px;cursor:pointer;font-size:15px;color:#294b72;background:#f5f8fb}.subchapter-body{padding:8px 12px 12px;background:#fff}.subchapter-body .fill-field{margin:9px 0}.subchapter-body .checkbox-field{margin:8px 0}
+.chapter{border:1px solid #dce3e9;border-radius:12px;margin:10px 0;background:#f8fafc;overflow:hidden}.chapter summary{padding:14px;cursor:pointer;font-size:17px;color:#203a5d}.chapter-body{padding:10px 14px 14px;background:#fff}.chapter .fill-field{margin:10px 0}
 </style>
 <style>
 .work-checks{margin-top:24px}
@@ -773,8 +773,15 @@ async function openFillPdf(pdfId,logementId){
     if(l && isDemoChantierName(chantier?.nom)){ addUniversalHeaderFields(fillDoc,l); }
     const F=n=>fillForm.getField(n);
     const val=n=>{try{const f=F(n);return (f.getSelected?.()[0]||f.getText?.()||'').toString().trim();}catch(e){return '';}};
-    const fieldText=(name,label,chapter,placeholder='')=>({name,label,chapter,type:'text',value:val(name)||placeholder});
-    const fieldQty=(name,label,chapter)=>({name,label,chapter,type:'qty',value:val(name)});
+    const pdfOptions=n=>{try{const f=F(n); if(typeof f.getOptions==='function'){const o=f.getOptions()||[]; return o.map(v=>Array.isArray(v)?String(v[0]):String(v)).filter((v,i,a)=>a.indexOf(v)===i);} }catch(e){} return [];};
+    const fieldText=(name,label,chapter,placeholder='')=>{
+      const opts=pdfOptions(name);
+      return opts.length?{name,label,chapter,type:'select',value:val(name),options:opts}:{name,label,chapter,type:'text',value:val(name)||placeholder};
+    };
+    const fieldQty=(name,label,chapter)=>{
+      const opts=pdfOptions(name);
+      return {name,label,chapter,type:'qty',value:val(name),options:opts.length?opts:['-','1','2','3','4','5','6','7','8','9','10']};
+    };
     const fieldCheck=(name,label,chapter)=>({name,label,chapter,type:'check',value:(()=>{try{return F(name).isChecked()}catch(e){return false}})()});
     const fields=[
       fieldText('GLEN_MaitreOuvrage','Maître d’Ouvrage',1),fieldText('GLEN_Region','Région',1),fieldText('GLEN_NumProgramme','N° du programme',1),fieldText('GLEN_NumLot','N° du Lot',1),
@@ -807,25 +814,15 @@ async function openFillPdf(pdfId,logementId){
     const wrap=document.getElementById('fillFields');
     const chapters={}; fields.forEach(x=>(chapters[x.chapter]??=[]).push(x));
     const titles={1:'Renseignement marché',2:'Renseignement logement',3:'Générateur',4:'Radiateurs électriques',5:'Eau chaude',6:'Ventilation',7:'Robinetterie',8:'Travaux'};
-    const subgroups={
-      3:[['Chaudière',/^Chaudière — /i],['Pompe à chaleur',/^Pompe à chaleur — /i],['Chauffe-bain',/^Chauffe-bain — /i]],
-      4:[['Radiateur 500 W',/^Radiateur 500 W — /i],['Radiateur 750 W',/^Radiateur 750 W — /i],['Radiateur 1000 W',/^Radiateur 1000 W — /i],['Radiateur 1250 W',/^Radiateur 1250 W — /i],['Radiateur 1500 W',/^Radiateur 1500 W — /i],['Radiateur 2000 W',/^Radiateur 2000 W — /i],['Sèche-serviette 500 W',/^Sèche-serviette 500 W — /i],['Sèche-serviette 750 W',/^Sèche-serviette 750 W — /i]],
-      5:[['Eau chaude 150 L',/^Eau chaude 150 L — /i],['Eau chaude 200 L',/^Eau chaude 200 L — /i],['Eau chaude 250 L',/^Eau chaude 250 L — /i],['Eau chaude 300 L',/^Eau chaude 300 L — /i]],
-      6:[['Caissons',/^Caissons — /i],['Bouches d’extraction',/^Bouches d’extraction — /i]],
-      7:[['Mitigeur évier',/^Mitigeur évier — /i],['Mitigeur lavabo',/^Mitigeur lavabo — /i],['Mitigeur baignoire',/^Mitigeur baignoire — /i],['Mitigeur douche',/^Mitigeur douche — /i],['Set de douche',/^Set de douche — /i]],
-      8:[['Travaux',/^(?!Date des travaux)/i],['Date des travaux',/^Date des travaux/i]]
+    const renderField=x=>{
+      if(x.type==='check') return `<label class="checkbox-field"><input type="checkbox" data-fill-name="${esc(x.name)}" data-fill-type="checkbox" ${x.value?'checked':''}><span>${esc(x.label)}</span></label>`;
+      if(x.type==='qty' || x.type==='select'){
+        const opts=(x.options||[]).filter((v,i,a)=>a.indexOf(v)===i);
+        return `<label class="fill-field"><span>${esc(x.label)}</span><select data-fill-name="${esc(x.name)}" data-fill-type="dropdown">${opts.map(o=>`<option value="${esc(o)}" ${String(x.value)===String(o)?'selected':''}>${esc(o)}</option>`).join('')}</select></label>`;
+      }
+      return `<label class="fill-field"><span>${esc(x.label)}</span><input type="text" data-fill-name="${esc(x.name)}" data-fill-type="text" value="${esc(x.value)}"></label>`;
     };
-    const renderField=x=>x.type==='check'?`<label class="checkbox-field"><input type="checkbox" data-fill-name="${esc(x.name)}" data-fill-type="checkbox" ${x.value?'checked':''}><span>${esc(x.label)}</span></label>`:x.type==='qty'?`<label class="fill-field"><span>${esc(x.label)}</span><select data-fill-name="${esc(x.name)}" data-fill-type="dropdown"><option value="-">-</option>${Array.from({length:10},(_,i)=>String(i+1)).map(o=>`<option value="${o}" ${x.value===o?'selected':''}>${o}</option>`).join('')}</select></label>`:`<label class="fill-field"><span>${esc(x.label)}</span><input type="text" data-fill-name="${esc(x.name)}" data-fill-type="text" value="${esc(x.value)}"></label>`;
-    const renderChapterBody=k=>{
-      const items=chapters[k]||[];
-      if(!subgroups[k]) return items.map(renderField).join('');
-      return subgroups[k].map(([title,re])=>{
-        const group=items.filter(x=>re.test(String(x.label||'')));
-        if(!group.length) return '';
-        return `<details class="subchapter"><summary><b>${esc(title)}</b></summary><div class="subchapter-body">${group.map(renderField).join('')}</div></details>`;
-      }).join('');
-    };
-    wrap.innerHTML=Object.keys(titles).map(k=>`<details class="chapter" ${k==='1'||k==='2'?'open':''}><summary><b>${k}. ${titles[k]}</b></summary><div class="chapter-body">${renderChapterBody(k)}</div></details>`).join('');
+    wrap.innerHTML=Object.keys(titles).map(k=>`<details class="chapter" ${k==='1'||k==='2'?'open':''}><summary><b>${k}. ${titles[k]}</b></summary><div class="chapter-body">${(chapters[k]||[]).map(renderField).join('')}</div></details>`).join('');
     document.getElementById('fillMsg').textContent='Chapitres prêts à remplir.';
   }catch(e){const m=document.getElementById('fillMsg');if(m){m.className='error';m.textContent='Erreur : '+(e?.message||e);}}
 }
