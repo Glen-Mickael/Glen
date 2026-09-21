@@ -676,13 +676,14 @@ async function createUniversalQuitus(logementId){
   const {data:l,error:le}=await supabaseClient.from('logements').select('*').eq('id',logementId).single();
   if(le||!l){alert('Logement introuvable.');return;}
   const {data:c,error:ce}=await supabaseClient.from('chantiers').select('nom').eq('id',l.chantier_id).single();
-  if(ce||!c||!isDemoChantierName(c.nom)){alert('Le quitus universel est actuellement disponible uniquement pour le chantier DEMO.');return;}
+  if(ce||!c){alert('Chantier introuvable.');return;}
   if(!confirm('Créer le quitus universel pour ce logement ?'))return;
   try{
     const bin=atob(GLEN_UNIVERSAL_QUITUS_B64); const bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
     let doc=await PDFLib.PDFDocument.load(bytes,{updateFieldAppearances:false});
     addUniversalHeaderFields(doc,l);
-    const saved=await doc.save({useObjectStreams:false});
+    ensureQuitusEditableFields(doc);
+    const saved=await doc.save({useObjectStreams:false,updateFieldAppearances:true});
     const blob=new Blob([saved],{type:'application/pdf'});
     const path=`${logementId}/quitus-universel-${Date.now()}.pdf`;
     const {data:userData}=await supabaseClient.auth.getUser();
@@ -711,207 +712,74 @@ async function openFillPdfFromCurrent(logementId){
   const {data:pdf}=await supabaseClient.from('pdf_documents').select('*').eq('logement_id',logementId).maybeSingle(); if(pdf)openFillPdf(pdf.id,logementId);
 }
 
-// ========================= QUITUS — CHAMPS DU PDF MAITRE =========================
-// Le modèle 0800M10002.pdf contient déjà ses vrais champs AcroForm.
-// IMPORTANT : on utilise leurs noms réels (B13/C13/D13/E13, etc.)
-// afin de conserver les menus déroulants et la compatibilité du PDF.
-const HIDDEN_FIXED_FIELDS=new Set();
-
-let fillPdfId=null, fillLogementId=null, fillDoc=null, fillForm=null;
-async function openFillPdf(pdfId,logementId){
-  fillPdfId=pdfId; fillLogementId=logementId;
-  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir / modifier le quitus universel</h2><p class="sig-note">Les listes déroulantes proviennent directement du modèle QUITUS. Le PDF enregistré conserve les champs modifiables.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
-  try{
-    const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single(); if(error||!pdf)throw error||new Error('PDF introuvable.');
-    const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600); if(se)throw se;
-    const response=await fetch(urlData.signedUrl); if(!response.ok)throw new Error('Impossible de lire le PDF.');
-    const bytes=await response.arrayBuffer();
-    fillDoc=await PDFLib.PDFDocument.load(bytes,{updateFieldAppearances:false});
-    fillForm=fillDoc.getForm();
-
-    const {data:l}=await supabaseClient.from('logements').select('*').eq('id',logementId).single();
-    const {data:chantier}=await supabaseClient.from('chantiers').select('nom').eq('id',l?.chantier_id||'').maybeSingle();
-
-    // Les informations d'en-tête GLEN sont ajoutées uniquement si le modèle
-    // ne possède pas déjà ces zones comme champs AcroForm.
-    if(l && isDemoChantierName(chantier?.nom)){ addUniversalHeaderFields(fillDoc,l); }
-
-    const F=n=>fillForm.getField(n);
-    const val=n=>{try{const f=F(n);return (f.getSelected?.()[0] ?? f.getText?.() ?? '').toString().trim();}catch(e){return '';}};
-    const getPdfOptions=name=>{
-      try{
-        const f=F(name);
-        if(typeof f.getOptions==='function'){
-          const opts=f.getOptions();
-          if(Array.isArray(opts)) return opts.map(String);
-        }
-      }catch(e){}
-      return [];
-    };
-    const fieldText=(name,label,chapter,placeholder='')=>({name,label,chapter,type:'text',value:val(name)||placeholder});
-    const fieldSelect=(name,label,chapter)=>({name,label,chapter,type:'select',value:val(name),options:getPdfOptions(name)});
-    const fieldCheck=(name,label,chapter)=>({name,label,chapter,type:'check',value:(()=>{try{return F(name).isChecked()}catch(e){return false}})()});
-
-    // Les noms ci-dessous correspondent aux champs réellement présents dans
-    // 0800M10002.pdf. Les champs B/C/D/E sont de vrais menus déroulants.
-    const fields=[
-      // 1 — Renseignement marché / 2 — Renseignement logement
-      fieldText('GLEN_MaitreOuvrage','Maître d’Ouvrage',1),
-      fieldText('GLEN_Region','Région',1),
-      fieldText('GLEN_NumProgramme','N° du programme',1),
-      fieldText('GLEN_NumLot','N° du Lot',1),
-      fieldText('GLEN_NomLocataire','Nom du locataire',2,l?.nom||''),
-      fieldText('GLEN_Typologie','Typologie logement',2,l?.type||''),
-      fieldText('GLEN_Adresse','Adresse du logement',2,l?.adresse||''),
-      fieldText('GLEN_NumLogement','Numéro de logement',2,l?.num_log||''),
-      fieldText('GLEN_Ville','Ville',2,l?.commune||''),
-      fieldText('GLEN_IdLogement','Id du logement',2,l?.id||''),
-
-      // 3 — Générateur
-      fieldSelect('B13','Chaudière — Marque',3), fieldSelect('C13','Chaudière — Modèle',3), fieldSelect('D13','Chaudière — Spécificités',3), fieldSelect('E13','Chaudière — Nombre',3),
-      fieldSelect('B14','Pompe à chaleur — Marque',3), fieldSelect('C14','Pompe à chaleur — Modèle',3), fieldSelect('D14','Pompe à chaleur — Puissance',3), fieldSelect('E14','Pompe à chaleur — Nombre',3),
-      fieldSelect('B15','Chauffe-bain — Marque',3), fieldSelect('C15','Chauffe-bain — Modèle',3), fieldSelect('D15','Chauffe-bain — Spécificités',3), fieldSelect('E15','Chauffe-bain — Nombre',3),
-
-      // 4 — Radiateurs électriques
-      fieldSelect('B18','Radiateur 500 W — Marque',4), fieldSelect('C18','Radiateur 500 W — Modèle',4), fieldSelect('D18','Radiateur 500 W — Spécificités',4), fieldSelect('E18','Radiateur 500 W — Nombre',4),
-      fieldSelect('B19','Radiateur 750 W — Marque',4), fieldSelect('C19','Radiateur 750 W — Modèle',4), fieldSelect('D19','Radiateur 750 W — Spécificités',4), fieldSelect('E19','Radiateur 750 W — Nombre',4),
-      fieldSelect('B20','Radiateur 1000 W — Marque',4), fieldSelect('C20','Radiateur 1000 W — Modèle',4), fieldSelect('D20','Radiateur 1000 W — Spécificités',4), fieldSelect('E20','Radiateur 1000 W — Nombre',4),
-      fieldSelect('B21','Radiateur 1250 W — Marque',4), fieldSelect('C21','Radiateur 1250 W — Modèle',4), fieldSelect('D21','Radiateur 1250 W — Spécificités',4), fieldSelect('E21','Radiateur 1250 W — Nombre',4),
-      fieldSelect('B22','Radiateur 1500 W — Marque',4), fieldSelect('C22','Radiateur 1500 W — Modèle',4), fieldSelect('D22','Radiateur 1500 W — Spécificités',4), fieldSelect('E22','Radiateur 1500 W — Nombre',4),
-      fieldSelect('B23','Radiateur 2000 W — Marque',4), fieldSelect('C23','Radiateur 2000 W — Modèle',4), fieldSelect('D23','Radiateur 2000 W — Spécificités',4), fieldSelect('E23','Radiateur 2000 W — Nombre',4),
-      fieldSelect('B25','Sèche-serviette 500 W — Marque',4), fieldSelect('C25','Sèche-serviette 500 W — Modèle',4), fieldSelect('D25','Sèche-serviette 500 W — Spécificités',4), fieldSelect('E25','Sèche-serviette 500 W — Nombre',4),
-      fieldSelect('B26','Sèche-serviette 750 W — Marque',4), fieldSelect('C26','Sèche-serviette 750 W — Modèle',4), fieldSelect('D26','Sèche-serviette 750 W — Spécificités',4), fieldSelect('E26','Sèche-serviette 750 W — Nombre',4),
-
-      // 5 — Eau chaude
-      fieldSelect('B29','Eau chaude 150 L — Marque',5), fieldSelect('C29','Eau chaude 150 L — Modèle',5), fieldSelect('D29','Eau chaude 150 L — Spécificités',5), fieldSelect('E29','Eau chaude 150 L — Nombre',5),
-      fieldSelect('B30','Eau chaude 200 L — Marque',5), fieldSelect('C30','Eau chaude 200 L — Modèle',5), fieldSelect('D30','Eau chaude 200 L — Spécificités',5), fieldSelect('E30','Eau chaude 200 L — Nombre',5),
-      fieldSelect('B31','Eau chaude 250 L — Marque',5), fieldSelect('C31','Eau chaude 250 L — Modèle',5), fieldSelect('D31','Eau chaude 250 L — Spécificités',5), fieldSelect('E31','Eau chaude 250 L — Nombre',5),
-      fieldSelect('B32','Eau chaude 300 L — Marque',5), fieldSelect('C32','Eau chaude 300 L — Modèle',5), fieldSelect('D32','Eau chaude 300 L — Spécificités',5), fieldSelect('E32','Eau chaude 300 L — Nombre',5),
-
-      // 6 — Ventilation
-      fieldSelect('B39','Caissons — Marque',6), fieldSelect('C39','Caissons — Modèle',6), fieldSelect('D39','Caissons — Spécificités',6), fieldSelect('E39','Caissons — Nombre',6),
-      fieldSelect('B40','Bouches d’extraction — Marque',6), fieldSelect('C40','Bouches d’extraction — Modèle',6), fieldSelect('D40','Bouches d’extraction — Spécificités',6), fieldSelect('E40','Bouches d’extraction — Nombre',6),
-
-      // 7 — Robinetterie
-      fieldSelect('B43','Mitigeur évier — Marque',7), fieldSelect('C43','Mitigeur évier — Modèle',7), fieldSelect('D43','Mitigeur évier — Spécificités',7), fieldSelect('E43','Mitigeur évier — Nombre',7),
-      fieldSelect('B44','Mitigeur lavabo — Marque',7), fieldSelect('C44','Mitigeur lavabo — Modèle',7), fieldSelect('D44','Mitigeur lavabo — Spécificités',7), fieldSelect('E44','Mitigeur lavabo — Nombre',7),
-      fieldSelect('B45','Mitigeur baignoire — Marque',7), fieldSelect('C45','Mitigeur baignoire — Modèle',7), fieldSelect('D45','Mitigeur baignoire — Spécificités',7), fieldSelect('E45','Mitigeur baignoire — Nombre',7),
-      fieldSelect('B46','Mitigeur douche — Marque',7), fieldSelect('C46','Mitigeur douche — Modèle',7), fieldSelect('D46','Mitigeur douche — Spécificités',7), fieldSelect('E46','Mitigeur douche — Nombre',7),
-      fieldSelect('B47','Set de douche — Marque',7), fieldSelect('C47','Set de douche — Modèle',7), fieldSelect('D47','Set de douche — Spécificités',7), fieldSelect('E47','Set de douche — Nombre',7),
-
-      // 8 — Travaux (vrais boutons du PDF)
-      fieldCheck('travaux_B50','Remplacement de la chaudière',8),
-      fieldCheck('travaux_B51',"Remplacement thermostat d'ambiance",8),
-      fieldCheck('travaux_B52','Remplacement de la ventouse',8),
-      fieldCheck('travaux_B53','Désembouage et rinçage du réseau chauffage',8),
-      fieldCheck('travaux_B54','Remplacement de flexible ROAI',8),
-      fieldCheck('travaux_B55','Remplacement BAZ Pilot (si VMC gaz)',8),
-      fieldCheck('travaux_B56','Remplacement du relai DSC (si VMC gaz)',8),
-      fieldCheck('travaux_B57','Remplacement groupe sécu ballon',8),
-      fieldCheck('travaux_B58','Remplacement limiteur de pression',8),
-      fieldCheck('travaux_E50','Contrôle et mise en service',8),
-      fieldCheck('travaux_E51',"Contrôle amenées d'air",8),
-      fieldCheck('travaux_E52','Contrôle pénétration du gaz dans le logement',8),
-      fieldCheck('travaux_E53','Mise en service chaudière',8),
-      fieldCheck('travaux_E54','Mise en service VMC',8),
-      fieldText('date_travaux','Date des travaux réalisés dans le logement',8)
-    ];
-
-    const wrap=document.getElementById('fillFields');
-    const chapters={}; fields.forEach(x=>(chapters[x.chapter]??=[]).push(x));
-    const titles={1:'Renseignement marché',2:'Renseignement logement',3:'Générateur',4:'Radiateurs électriques',5:'Eau chaude',6:'Ventilation',7:'Robinetterie',8:'Travaux'};
-    const renderField=x=>{
-      if(x.type==='check') return `<label class="checkbox-field"><input type="checkbox" data-fill-name="${esc(x.name)}" data-fill-type="checkbox" ${x.value?'checked':''}><span>${esc(x.label)}</span></label>`;
-      if(x.type==='select'){
-        const opts=(x.options||[]).filter((v,i,a)=>a.indexOf(v)===i);
-        return `<label class="fill-field"><span>${esc(x.label)}</span><select data-fill-name="${esc(x.name)}" data-fill-type="dropdown">${opts.map(o=>`<option value="${esc(o)}" ${String(x.value)===String(o)?'selected':''}>${esc(o)}</option>`).join('')}</select></label>`;
-      }
-      return `<label class="fill-field"><span>${esc(x.label)}</span><input type="text" data-fill-name="${esc(x.name)}" data-fill-type="text" value="${esc(x.value)}"></label>`;
-    };
-    wrap.innerHTML=Object.keys(titles).map(k=>`<details class="chapter" ${k==='1'||k==='2'?'open':''}><summary><b>${k}. ${titles[k]}</b></summary><div class="chapter-body">${(chapters[k]||[]).map(renderField).join('')}</div></details>`).join('');
-    document.getElementById('fillMsg').textContent='Chapitres prêts à remplir — les listes déroulantes du modèle sont disponibles.';
-  }catch(e){const m=document.getElementById('fillMsg');if(m){m.className='error';m.textContent='Erreur : '+(e?.message||e);}}
+// ========================= QUITUS — CHAMPS MODIFIABLES V17 =========================
+// Le PDF maître reste le fond graphique. Les champs GLEN_* sont des champs AcroForm
+// créés à exactement la position des zones modifiables du modèle Excel/PDF.
+// Ils ne sont jamais aplatis : l'export ZIP récupère donc un PDF toujours modifiable.
+const QUITUS_MASTER_FIELDS=[{"name":"GLEN_B13","source":"B13","page":0,"x":182.21,"y":539.70999,"w":104.87999999999997,"h":21.840010000000007,"type":"select","label":"Chaudière — Marque","chapter":3,"options":[" ","Saunier Duval","elm leblanc","Vaillant"]},{"name":"GLEN_C13","source":"C13","page":0,"x":290.09,"y":539.70999,"w":103.46000000000004,"h":21.840010000000007,"type":"select","label":"Chaudière — Modèle","chapter":3,"options":[" ","Themaplus VMC V25","Themaplus F25","Themaplus F30","Isotwin F25","Acléis VMC 24","Oxylis 18-24","Oxylis 24-30","ecoTEC Pro 28","ecoTEC Plus 32","ecoTEC Plus VCI 32"]},{"name":"GLEN_D13","source":"D13","page":0,"x":396.55,"y":539.70999,"w":103.46999999999997,"h":21.840010000000007,"type":"select","label":"Chaudière — Spécificités","chapter":3,"options":[" ","Ventouse Horizontale","Ventouse Verticale","VMC Gaz"]},{"name":"GLEN_E13","source":"E13","page":0,"x":503.02,"y":539.70999,"w":71.89999999999998,"h":21.840010000000007,"type":"select","label":"Chaudière — Nombre","chapter":3,"options":[" ","1","2","3","4"]},{"name":"GLEN_B14","source":"B14","page":0,"x":182.21,"y":514.87,"w":104.87999999999997,"h":21.839989999999943,"type":"select","label":"Pompe à chaleur — Marque","chapter":3,"options":[" ","Bosch","Panasonic","Vaillant","Saunier Duval"]},{"name":"GLEN_C14","source":"C14","page":0,"x":290.09,"y":514.87,"w":103.46000000000004,"h":21.839989999999943,"type":"select","label":"Pompe à chaleur — Modèle","chapter":3,"options":[" ","Compresse 3008i","aroTHERM Pro","Aquarea"]},{"name":"GLEN_D14","source":"D14","page":0,"x":396.55,"y":514.87,"w":103.46999999999997,"h":21.839989999999943,"type":"select","label":"Pompe à chaleur — Spécificités","chapter":3,"options":[" ","3kw","4kw","5kw","6kw","7kw","8kw","9kw","10kw","11kw","12kw","13kw","14kw","15kw"]},{"name":"GLEN_E14","source":"E14","page":0,"x":503.02,"y":514.87,"w":71.89999999999998,"h":21.839989999999943,"type":"select","label":"Pompe à chaleur — Nombre","chapter":3,"options":[" ","1","2","3","4"]},{"name":"GLEN_B15","source":"B15","page":0,"x":182.21,"y":490.50999,"w":104.87999999999997,"h":21.36000999999999,"type":"select","label":"Chauffe-bain — Marque","chapter":3,"options":[" ","Saunier Duval","elm leblanc"]},{"name":"GLEN_C15","source":"C15","page":0,"x":290.09,"y":490.50999,"w":103.46000000000004,"h":21.36000999999999,"type":"select","label":"Chauffe-bain — Modèle","chapter":3,"options":[" ","Opalia C11","Opalia C14","Opalia C14","Opalia F12","Opalia F15","OpaliaF17","Ondea LC11 BasNOX","Ondea LC14 BasNox","Ondea LC12","Ondea LC15","Ondea LC17"]},{"name":"GLEN_D15","source":"D15","page":0,"x":396.55,"y":490.50999,"w":103.46999999999997,"h":21.36000999999999,"type":"select","label":"Chauffe-bain — Spécificités","chapter":3,"options":[" ","Ventouse Horizontale","Ventouse Verticale","VMC Gaz"]},{"name":"GLEN_E15","source":"E15","page":0,"x":503.02,"y":490.50999,"w":71.89999999999998,"h":21.36000999999999,"type":"select","label":"Chauffe-bain — Nombre","chapter":3,"options":[" ","1","2","3","4"]},{"name":"GLEN_B18","source":"B18","page":0,"x":182.21,"y":431.59,"w":104.87999999999997,"h":21.840000000000032,"type":"select","label":"Radiateur 500 W — Marque","chapter":4,"options":[" ","Atlantic"]},{"name":"GLEN_C18","source":"C18","page":0,"x":290.09,"y":431.59,"w":103.46000000000004,"h":21.840000000000032,"type":"select","label":"Radiateur 500 W — Modèle","chapter":4,"options":[" ","Naria","Agilia"]},{"name":"GLEN_D18","source":"D18","page":0,"x":396.55,"y":431.59,"w":103.46999999999997,"h":21.840000000000032,"type":"select","label":"Radiateur 500 W — Spécificités","chapter":4,"options":[" ","Inertie Fluide","Inertie Sèche"]},{"name":"GLEN_E18","source":"E18","page":0,"x":503.02,"y":431.59,"w":71.89999999999998,"h":21.840000000000032,"type":"select","label":"Radiateur 500 W — Nombre","chapter":4,"options":[" ","1","2","3","4","5","6","7","8","9","10"]},{"name":"GLEN_B19","source":"B19","page":0,"x":182.21,"y":406.72999,"w":104.87999999999997,"h":21.86000999999999,"type":"select","label":"Radiateur 750 W — Marque","chapter":4,"options":[" ","Atlantic"]},{"name":"GLEN_C19","source":"C19","page":0,"x":290.09,"y":406.72999,"w":103.46000000000004,"h":21.86000999999999,"type":"select","label":"Radiateur 750 W — Modèle","chapter":4,"options":[" ","Naria","Agilia"]},{"name":"GLEN_D19","source":"D19","page":0,"x":396.55,"y":406.72999,"w":103.46999999999997,"h":21.86000999999999,"type":"select","label":"Radiateur 750 W — Spécificités","chapter":4,"options":[" ","Inertie Fluide","Inertie Sèche"]},{"name":"GLEN_E19","source":"E19","page":0,"x":503.02,"y":406.72999,"w":71.89999999999998,"h":21.86000999999999,"type":"select","label":"Radiateur 750 W — Nombre","chapter":4,"options":[" ","1","2","3","4","5","6","7","8","9","10"]},{"name":"GLEN_B20","source":"B20","page":0,"x":182.21,"y":381.88999,"w":104.87999999999997,"h":21.839999999999975,"type":"select","label":"Radiateur 1000 W — Marque","chapter":4,"options":[" ","Atlantic"]},{"name":"GLEN_C20","source":"C20","page":0,"x":290.09,"y":381.88999,"w":103.46000000000004,"h":21.839999999999975,"type":"select","label":"Radiateur 1000 W — Modèle","chapter":4,"options":[" ","Naria","Agilia"]},{"name":"GLEN_D20","source":"D20","page":0,"x":396.55,"y":381.88999,"w":103.46999999999997,"h":21.839999999999975,"type":"select","label":"Radiateur 1000 W — Spécificités","chapter":4,"options":[" ","Inertie Fluide","Inertie Sèche"]},{"name":"GLEN_E20","source":"E20","page":0,"x":503.02,"y":381.88999,"w":71.89999999999998,"h":21.839999999999975,"type":"select","label":"Radiateur 1000 W — Nombre","chapter":4,"options":[" ","1","2","3","4","5","6","7","8","9","10"]},{"name":"GLEN_B21","source":"B21","page":0,"x":182.21,"y":357.05,"w":104.87999999999997,"h":21.83999,"type":"select","label":"Radiateur 1250 W — Marque","chapter":4,"options":[" ","Atlantic"]},{"name":"GLEN_C21","source":"C21","page":0,"x":290.09,"y":357.05,"w":103.46000000000004,"h":21.83999,"type":"select","label":"Radiateur 1250 W — Modèle","chapter":4,"options":[" ","Naria","Agilia"]},{"name":"GLEN_D21","source":"D21","page":0,"x":396.55,"y":357.05,"w":103.46999999999997,"h":21.83999,"type":"select","label":"Radiateur 1250 W — Spécificités","chapter":4,"options":[" ","Inertie Fluide","Inertie Sèche"]},{"name":"GLEN_E21","source":"E21","page":0,"x":503.02,"y":357.05,"w":71.89999999999998,"h":21.83999,"type":"select","label":"Radiateur 1250 W — Nombre","chapter":4,"options":[" ","1","2","3","4","5","6","7","8","9","10"]},{"name":"GLEN_B22","source":"B22","page":0,"x":182.21,"y":332.21,"w":104.87999999999997,"h":21.840000000000032,"type":"select","label":"Radiateur 1500 W — Marque","chapter":4,"options":[" ","Atlantic"]},{"name":"GLEN_C22","source":"C22","page":0,"x":290.09,"y":332.21,"w":103.46000000000004,"h":21.840000000000032,"type":"select","label":"Radiateur 1500 W — Modèle","chapter":4,"options":[" ","Naria","Agilia"]},{"name":"GLEN_D22","source":"D22","page":0,"x":396.55,"y":332.21,"w":103.46999999999997,"h":21.840000000000032,"type":"select","label":"Radiateur 1500 W — Spécificités","chapter":4,"options":[" ","Inertie Fluide","Inertie Sèche"]},{"name":"GLEN_E22","source":"E22","page":0,"x":503.02,"y":332.21,"w":71.89999999999998,"h":21.840000000000032,"type":"select","label":"Radiateur 1500 W — Nombre","chapter":4,"options":[" ","1","2","3","4","5","6","7","8","9","10"]},{"name":"GLEN_B23","source":"B23","page":0,"x":182.21,"y":307.37,"w":104.87999999999997,"h":21.839969999999994,"type":"select","label":"Radiateur 2000 W — Marque","chapter":4,"options":[" ","Atlantic"]},{"name":"GLEN_C23","source":"C23","page":0,"x":290.09,"y":307.37,"w":103.46000000000004,"h":21.839969999999994,"type":"select","label":"Radiateur 2000 W — Modèle","chapter":4,"options":[" ","Naria","Agilia"]},{"name":"GLEN_D23","source":"D23","page":0,"x":396.55,"y":307.37,"w":103.46999999999997,"h":21.839969999999994,"type":"select","label":"Radiateur 2000 W — Spécificités","chapter":4,"options":[" ","Inertie Fluide","Inertie Sèche"]},{"name":"GLEN_E23","source":"E23","page":0,"x":503.02,"y":307.37,"w":71.89999999999998,"h":21.839969999999994,"type":"select","label":"Radiateur 2000 W — Nombre","chapter":4,"options":[" ","1","2","3","4","5","6","7","8","9","10"]},{"name":"GLEN_B25","source":"B25","page":0,"x":182.21,"y":257.69,"w":104.87999999999997,"h":21.839980000000025,"type":"select","label":"Sèche-serviette 500 W — Marque","chapter":4,"options":[" ","Atlantic"]},{"name":"GLEN_C25","source":"C25","page":0,"x":290.09,"y":257.69,"w":103.46000000000004,"h":21.839980000000025,"type":"select","label":"Sèche-serviette 500 W — Modèle","chapter":4,"options":[" ","Lunis"]},{"name":"GLEN_D25","source":"D25","page":0,"x":396.55,"y":257.69,"w":103.46999999999997,"h":21.839980000000025,"type":"select","label":"Sèche-serviette 500 W — Spécificités","chapter":4,"options":[" ","Inertie Fluide","Inertie Sèche"]},{"name":"GLEN_E25","source":"E25","page":0,"x":503.02,"y":257.69,"w":71.89999999999998,"h":21.839980000000025,"type":"select","label":"Sèche-serviette 500 W — Nombre","chapter":4,"options":[" ","1","2","3","4"]},{"name":"GLEN_B26","source":"B26","page":0,"x":182.21,"y":233.29999,"w":104.87999999999997,"h":21.39000999999999,"type":"select","label":"Sèche-serviette 750 W — Marque","chapter":4,"options":[" ","Atlantic"]},{"name":"GLEN_C26","source":"C26","page":0,"x":290.09,"y":233.29999,"w":103.46000000000004,"h":21.39000999999999,"type":"select","label":"Sèche-serviette 750 W — Modèle","chapter":4,"options":[" ","Lunis"]},{"name":"GLEN_D26","source":"D26","page":0,"x":396.55,"y":233.29999,"w":103.46999999999997,"h":21.39000999999999,"type":"select","label":"Sèche-serviette 750 W — Spécificités","chapter":4,"options":[" ","Inertie Fluide","Inertie Sèche"]},{"name":"GLEN_E26","source":"E26","page":0,"x":503.02,"y":233.29999,"w":71.89999999999998,"h":21.39000999999999,"type":"select","label":"Sèche-serviette 750 W — Nombre","chapter":4,"options":[" ","1","2","3","4"]},{"name":"GLEN_B29","source":"B29","page":0,"x":182.21,"y":174.38,"w":104.87999999999997,"h":21.839969999999994,"type":"select","label":"Ballon 150 litres — Marque","chapter":5,"options":[" ","Atlantic"]},{"name":"GLEN_C29","source":"C29","page":0,"x":290.09,"y":174.38,"w":103.46000000000004,"h":21.839969999999994,"type":"select","label":"Ballon 150 litres — Modèle","chapter":5,"options":[" ","Zénéo","Chauffeo +","Calypso"]},{"name":"GLEN_D29","source":"D29","page":0,"x":396.55,"y":174.38,"w":103.46999999999997,"h":21.839969999999994,"type":"select","label":"Ballon 150 litres — Spécificités","chapter":5,"options":[" ","Stéatite","Blindé","Thermodynamique"]},{"name":"GLEN_E29","source":"E29","page":0,"x":503.02,"y":174.38,"w":71.89999999999998,"h":21.839969999999994,"type":"select","label":"Ballon 150 litres — Nombre","chapter":5,"options":[" ","1","2","3","4"]},{"name":"GLEN_B30","source":"B30","page":0,"x":182.21,"y":149.53998,"w":104.87999999999997,"h":21.84001999999998,"type":"select","label":"Ballon 200 litres — Marque","chapter":5,"options":[" ","Atlantic"]},{"name":"GLEN_C30","source":"C30","page":0,"x":290.09,"y":149.53998,"w":103.46000000000004,"h":21.84001999999998,"type":"select","label":"Ballon 200 litres — Modèle","chapter":5,"options":[" ","Zénéo","Chauffeo +","Calypso"]},{"name":"GLEN_D30","source":"D30","page":0,"x":396.55,"y":149.53998,"w":103.46999999999997,"h":21.84001999999998,"type":"select","label":"Ballon 200 litres — Spécificités","chapter":5,"options":[" ","Stéatite","Blindé","Thermodynamique"]},{"name":"GLEN_E30","source":"E30","page":0,"x":503.02,"y":149.53998,"w":71.89999999999998,"h":21.84001999999998,"type":"select","label":"Ballon 200 litres — Nombre","chapter":5,"options":[" ","1","2","3","4"]},{"name":"GLEN_B31","source":"B31","page":0,"x":182.21,"y":124.70001,"w":104.87999999999997,"h":21.839970000000008,"type":"select","label":"Ballon 250 litres — Marque","chapter":5,"options":[" ","Atlantic"]},{"name":"GLEN_C31","source":"C31","page":0,"x":290.09,"y":124.70001,"w":103.46000000000004,"h":21.839970000000008,"type":"select","label":"Ballon 250 litres — Modèle","chapter":5,"options":[" ","Zénéo","Chauffeo +","Calypso"]},{"name":"GLEN_D31","source":"D31","page":0,"x":396.55,"y":124.70001,"w":103.46999999999997,"h":21.839970000000008,"type":"select","label":"Ballon 250 litres — Spécificités","chapter":5,"options":[" ","Stéatite","Blindé","Thermodynamique"]},{"name":"GLEN_E31","source":"E31","page":0,"x":503.02,"y":124.70001,"w":71.89999999999998,"h":21.839970000000008,"type":"select","label":"Ballon 250 litres — Nombre","chapter":5,"options":[" ","1","2","3","4"]},{"name":"GLEN_B32","source":"B32","page":0,"x":182.21,"y":100.339969,"w":104.87999999999997,"h":21.36004100000001,"type":"select","label":"Ballon 300 litres — Marque","chapter":5,"options":[" ","Atlantic"]},{"name":"GLEN_C32","source":"C32","page":0,"x":290.09,"y":100.339969,"w":103.46000000000004,"h":21.36004100000001,"type":"select","label":"Ballon 300 litres — Modèle","chapter":5,"options":[" ","Zénéo","Chauffeo +","Calypso"]},{"name":"GLEN_D32","source":"D32","page":0,"x":396.55,"y":100.339969,"w":103.46999999999997,"h":21.36004100000001,"type":"select","label":"Ballon 300 litres — Spécificités","chapter":5,"options":[" ","Stéatite","Blindé","Thermodynamique"]},{"name":"GLEN_E32","source":"E32","page":0,"x":503.02,"y":100.339969,"w":71.89999999999998,"h":21.36004100000001,"type":"select","label":"Ballon 300 litres — Nombre","chapter":5,"options":[" ","1","2","3","4"]},{"name":"GLEN_B39","source":"B39","page":1,"x":182.21,"y":706.3,"w":104.87999999999997,"h":21.840000000000032,"type":"select","label":"Caissons — Marque","chapter":6,"options":[" ","Nather","Aldes","Atlantic"]},{"name":"GLEN_C39","source":"C39","page":1,"x":290.09,"y":706.3,"w":103.46000000000004,"h":21.840000000000032,"type":"select","label":"Caissons — Modèle","chapter":6,"options":[" ","HygroInfinity BC","EasyVec C4 Pro"]},{"name":"GLEN_D39","source":"D39","page":1,"x":396.55,"y":706.3,"w":103.46999999999997,"h":21.840000000000032,"type":"select","label":"Caissons — Spécificités","chapter":6,"options":[" ","HygroRéglable B","HygroRéglable A","AutoRéglable"]},{"name":"GLEN_E39","source":"E39","page":1,"x":503.02,"y":706.3,"w":71.89999999999998,"h":21.840000000000032,"type":"select","label":"Caissons — Nombre","chapter":6,"options":[" ","1","2","3","4"]},{"name":"GLEN_B40","source":"B40","page":1,"x":182.21,"y":681.94,"w":104.87999999999997,"h":21.3599999999999,"type":"select","label":"Bouches d’extraction — Marque","chapter":6,"options":[" ","Aldes","Anjios","Atlantic"]},{"name":"GLEN_C40","source":"C40","page":1,"x":290.09,"y":681.94,"w":103.46000000000004,"h":21.3599999999999,"type":"select","label":"Bouches d’extraction — Modèle","chapter":6,"options":[" ","Bahia","Alizé"]},{"name":"GLEN_D40","source":"D40","page":1,"x":396.55,"y":681.94,"w":103.46999999999997,"h":21.3599999999999,"type":"select","label":"Bouches d’extraction — Spécificités","chapter":6,"options":[" ","HygroRéglable B","HygroRéglable A","AutoRéglable"]},{"name":"GLEN_E40","source":"E40","page":1,"x":503.02,"y":681.94,"w":71.89999999999998,"h":21.3599999999999,"type":"select","label":"Bouches d’extraction — Nombre","chapter":6,"options":[" ","1","2","3","4","5","6","7","8","9","10"]},{"name":"GLEN_B43","source":"B43","page":1,"x":182.21,"y":623.02,"w":104.87999999999997,"h":21.840000000000032,"type":"select","label":"Mitigeur évier — Marque","chapter":7,"options":[" ","Jacob Delafon","Nobili"]},{"name":"GLEN_C43","source":"C43","page":1,"x":290.09,"y":623.02,"w":103.46000000000004,"h":21.840000000000032,"type":"select","label":"Mitigeur évier — Modèle","chapter":7,"options":[" ","Brive","Tago"]},{"name":"GLEN_D43","source":"D43","page":1,"x":396.55,"y":623.02,"w":103.46999999999997,"h":21.840000000000032,"type":"select","label":"Mitigeur évier — Spécificités","chapter":7,"options":[" ","Mitigeur","Thermostatique"]},{"name":"GLEN_E43","source":"E43","page":1,"x":503.02,"y":623.02,"w":71.89999999999998,"h":21.840000000000032,"type":"select","label":"Mitigeur évier — Nombre","chapter":7,"options":[" ","1","2","3","4"]},{"name":"GLEN_B44","source":"B44","page":1,"x":182.21,"y":598.15,"w":104.87999999999997,"h":21.870000000000005,"type":"select","label":"Mitigeur lavabo — Marque","chapter":7,"options":[" ","Jacob Delafon","Nobili"]},{"name":"GLEN_C44","source":"C44","page":1,"x":290.09,"y":598.15,"w":103.46000000000004,"h":21.870000000000005,"type":"select","label":"Mitigeur lavabo — Modèle","chapter":7,"options":[" ","Brive","Tago"]},{"name":"GLEN_D44","source":"D44","page":1,"x":396.55,"y":598.15,"w":103.46999999999997,"h":21.870000000000005,"type":"select","label":"Mitigeur lavabo — Spécificités","chapter":7,"options":[" ","Mitigeur","Thermostatique"]},{"name":"GLEN_E44","source":"E44","page":1,"x":503.02,"y":598.15,"w":71.89999999999998,"h":21.870000000000005,"type":"select","label":"Mitigeur lavabo — Nombre","chapter":7,"options":[" ","1","2","3","4","5","6","7","8","9","10"]},{"name":"GLEN_B45","source":"B45","page":1,"x":182.21,"y":573.31,"w":104.87999999999997,"h":21.840000000000032,"type":"select","label":"Mitigeur baignoire — Marque","chapter":7,"options":[" ","Jacob Delafon","Nobili"]},{"name":"GLEN_C45","source":"C45","page":1,"x":290.09,"y":573.31,"w":103.46000000000004,"h":21.840000000000032,"type":"select","label":"Mitigeur baignoire — Modèle","chapter":7,"options":[" ","Brive","Tago"]},{"name":"GLEN_D45","source":"D45","page":1,"x":396.55,"y":573.31,"w":103.46999999999997,"h":21.840000000000032,"type":"select","label":"Mitigeur baignoire — Spécificités","chapter":7,"options":[" ","Mitigeur","Thermostatique"]},{"name":"GLEN_E45","source":"E45","page":1,"x":503.02,"y":573.31,"w":71.89999999999998,"h":21.840000000000032,"type":"select","label":"Mitigeur baignoire — Nombre","chapter":7,"options":[" ","1","2","3","4"]},{"name":"GLEN_B46","source":"B46","page":1,"x":182.21,"y":548.47,"w":104.87999999999997,"h":21.839999999999918,"type":"select","label":"Mitigeur douche — Marque","chapter":7,"options":[" ","Jacob Delafon","Nobili"]},{"name":"GLEN_C46","source":"C46","page":1,"x":290.09,"y":548.47,"w":103.46000000000004,"h":21.839999999999918,"type":"select","label":"Mitigeur douche — Modèle","chapter":7,"options":[" ","Brive","Tago"]},{"name":"GLEN_D46","source":"D46","page":1,"x":396.55,"y":548.47,"w":103.46999999999997,"h":21.839999999999918,"type":"select","label":"Mitigeur douche — Spécificités","chapter":7,"options":[" ","Mitigeur","Thermostatique"]},{"name":"GLEN_E46","source":"E46","page":1,"x":503.02,"y":548.47,"w":71.89999999999998,"h":21.839999999999918,"type":"select","label":"Mitigeur douche — Nombre","chapter":7,"options":[" ","1","2","3","4"]},{"name":"GLEN_B47","source":"B47","page":1,"x":182.21,"y":524.11,"w":104.87999999999997,"h":21.360000000000014,"type":"select","label":"Set de douche — Marque","chapter":7,"options":[" ","Wirquin"]},{"name":"GLEN_C47","source":"C47","page":1,"x":290.09,"y":524.11,"w":103.46000000000004,"h":21.360000000000014,"type":"select","label":"Set de douche — Modèle","chapter":7,"options":[" ","Deseo"]},{"name":"GLEN_D47","source":"D47","page":1,"x":396.55,"y":524.11,"w":103.46999999999997,"h":21.360000000000014,"type":"select","label":"Set de douche — Spécificités","chapter":7,"options":[" ","Bain & Douche"]},{"name":"GLEN_E47","source":"E47","page":1,"x":503.02,"y":524.11,"w":71.89999999999998,"h":21.360000000000014,"type":"select","label":"Set de douche — Nombre","chapter":7,"options":[" ","1","2","3","4"]},{"name":"GLEN_travaux_B50","source":"travaux_B50","page":1,"x":225.5,"y":465.55,"w":18.25,"h":18.25,"type":"check","label":"Remplacement de la chaudière","chapter":8},{"name":"GLEN_travaux_B51","source":"travaux_B51","page":1,"x":225.5,"y":440.8,"w":18.25,"h":18.25,"type":"check","label":"Remplacement du thermostat d’ambiance","chapter":8},{"name":"GLEN_travaux_B52","source":"travaux_B52","page":1,"x":225.5,"y":415.8,"w":18.25,"h":18.25,"type":"check","label":"Remplacement de la ventouse","chapter":8},{"name":"GLEN_travaux_B53","source":"travaux_B53","page":1,"x":225.5,"y":391.05,"w":18.25,"h":18.25,"type":"check","label":"Désembouage et rinçage du réseau chauffage","chapter":8},{"name":"GLEN_travaux_B54","source":"travaux_B54","page":1,"x":225.5,"y":366.05,"w":18.25,"h":18.25,"type":"check","label":"Remplacement du flexible ROAI","chapter":8},{"name":"GLEN_travaux_B55","source":"travaux_B55","page":1,"x":225.5,"y":341.3,"w":18.25,"h":18.25,"type":"check","label":"Remplacement BAZ Pilot (si VMC gaz)","chapter":8},{"name":"GLEN_travaux_B56","source":"travaux_B56","page":1,"x":225.5,"y":316.55,"w":18.25,"h":18.25,"type":"check","label":"Remplacement du relai DSC (si VMC gaz)","chapter":8},{"name":"GLEN_travaux_B57","source":"travaux_B57","page":1,"x":225.5,"y":291.55,"w":18.25,"h":18.25,"type":"check","label":"Remplacement groupe sécu ballon","chapter":8},{"name":"GLEN_travaux_B58","source":"travaux_B58","page":1,"x":225.5,"y":266.8,"w":18.25,"h":18.25,"type":"check","label":"Remplacement limiteur de pression","chapter":8},{"name":"GLEN_travaux_E50","source":"travaux_E50","page":1,"x":504.0,"y":465.55,"w":18.25,"h":18.25,"type":"check","label":"Remplacement de la chaudière","chapter":8},{"name":"GLEN_travaux_E51","source":"travaux_E51","page":1,"x":504.0,"y":440.8,"w":18.25,"h":18.25,"type":"check","label":"Remplacement du thermostat d’ambiance","chapter":8},{"name":"GLEN_travaux_E52","source":"travaux_E52","page":1,"x":504.0,"y":415.8,"w":18.25,"h":18.25,"type":"check","label":"Remplacement de la ventouse","chapter":8},{"name":"GLEN_travaux_E53","source":"travaux_E53","page":1,"x":504.0,"y":391.05,"w":18.25,"h":18.25,"type":"check","label":"Désembouage et rinçage du réseau chauffage","chapter":8},{"name":"GLEN_travaux_E54","source":"travaux_E54","page":1,"x":504.0,"y":366.05,"w":18.25,"h":18.25,"type":"check","label":"Remplacement du flexible ROAI","chapter":8},{"name":"GLEN_travaux_E55","source":"travaux_E55","page":1,"x":504.0,"y":341.3,"w":18.25,"h":18.25,"type":"check","label":"Remplacement BAZ Pilot (si VMC gaz)","chapter":8},{"name":"GLEN_travaux_E57","source":"travaux_E57","page":1,"x":504.0,"y":291.55,"w":18.25,"h":18.25,"type":"check","label":"Remplacement groupe sécu ballon","chapter":8},{"name":"GLEN_travaux_E58","source":"travaux_E58","page":1,"x":504.0,"y":266.8,"w":18.25,"h":18.25,"type":"check","label":"Remplacement limiteur de pression","chapter":8},{"name":"GLEN_date_travaux","source":"date_travaux","page":1,"x":503.02,"y":316.13,"w":71.89999999999998,"h":21.840000000000032,"type":"text","label":"Date des travaux réalisés dans le logement","chapter":8}];
+const QUITUS_TITLES={1:'Renseignement marché',2:'Renseignement logement',3:'Générateur',4:'Radiateurs électriques',5:'Eau chaude',6:'Ventilation',7:'Robinetterie',8:'Travaux'};
+const QUITUS_HEADER_FIELDS=[
+  ['GLEN_MaitreOuvrage','Maître d’Ouvrage',40,751,245,17,''],['GLEN_Region','Région',306,751,245,17,''],
+  ['GLEN_NumProgramme','N° du programme',40,704,245,17,''],['GLEN_NumLot','N° du Lot',306,704,245,17,''],
+  ['GLEN_NomLocataire','Nom du locataire',40,638,245,17,''],['GLEN_Typologie','Typologie logement',306,638,245,17,''],
+  ['GLEN_Adresse','Adresse du logement',40,591,245,17,''],['GLEN_NumLogement','Numéro de logement',306,591,245,17,''],
+  ['GLEN_Ville','Ville',40,568,245,17,''],['GLEN_IdLogement','Id du logement',306,568,245,17,'']
+];
+function addGlenTextField(page,form,name,x,y,w,h,value=''){
+  let f; try{f=form.getField(name);}catch(e){f=null;}
+  if(f)return f;
+  f=form.createTextField(name); f.setText(String(value??''));
+  f.addToPage(page,{x,y,width:w,height:h,borderWidth:0,fontSize:8,textColor:PDFLib.rgb(0.05,0.05,0.05)});
+  return f;
 }
-function closeFillPdf(){document.getElementById('fillModal')?.remove();fillPdfId=null;fillLogementId=null;fillDoc=null;fillForm=null;}
+function ensureQuitusEditableFields(doc){
+  const form=doc.getForm(); const pages=doc.getPages();
+  for(const d of QUITUS_MASTER_FIELDS){
+    const page=pages[d.page]; let f=null;
+    try{f=form.getField(d.name);}catch(e){f=null;}
+    if(f)continue;
+    if(d.type==='select'){
+      f=form.createDropdown(d.name); f.addOptions((d.options||['\u00a0']).map(String));
+      f.addToPage(page,{x:d.x,y:d.y,width:d.w,height:d.h,borderWidth:0,fontSize:8,textColor:PDFLib.rgb(0.05,0.05,0.05)});
+    }else if(d.type==='check'){
+      f=form.createCheckBox(d.name); f.addToPage(page,{x:d.x,y:d.y,width:d.w,height:d.h,borderWidth:0});
+    }else{
+      f=form.createTextField(d.name); f.addToPage(page,{x:d.x,y:d.y,width:d.w,height:d.h,borderWidth:0,fontSize:8,textColor:PDFLib.rgb(0.05,0.05,0.05)});
+    }
+  }
+  return form;
+}
+function addUniversalHeaderFields(doc,l){
+  const page=doc.getPages()[0],form=doc.getForm();
+  for(const [name,label,x,y,w,h,def] of QUITUS_HEADER_FIELDS){
+    let v=def; if(name==='GLEN_NomLocataire')v=l?.nom||''; if(name==='GLEN_Typologie')v=l?.type||''; if(name==='GLEN_Adresse')v=l?.adresse||''; if(name==='GLEN_NumLogement')v=l?.num_log||''; if(name==='GLEN_Ville')v=l?.commune||''; if(name==='GLEN_IdLogement')v=l?.id||'';
+    addGlenTextField(page,form,name,x,y,w,h,v);
+  }
+}
+let fillPdfId=null,fillLogementId=null,fillDoc=null,fillForm=null;
+function quitusCurrentValue(name,type){
+  try{const f=fillForm.getField(name); if(type==='check')return !!f.isChecked(); if(type==='select')return (f.getSelected?.()||[])[0]||''; return f.getText?.()||'';}catch(e){return '';}
+}
 async function openFillPdf(pdfId,logementId){
   fillPdfId=pdfId; fillLogementId=logementId;
-  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir / modifier le quitus universel</h2><p class="sig-note">Les champs sont regroupés par chapitre pour suivre exactement la trame du PDF. Le PDF original reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <span class="small">V17</span></h2><p class="sig-note">Les champs et menus sont créés dans le PDF maître sans modifier sa mise en page. Le PDF exporté reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
   try{
     const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single(); if(error||!pdf)throw error||new Error('PDF introuvable.');
     const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600); if(se)throw se;
     const response=await fetch(urlData.signedUrl); if(!response.ok)throw new Error('Impossible de lire le PDF.');
     const bytes=await response.arrayBuffer(); fillDoc=await PDFLib.PDFDocument.load(bytes,{updateFieldAppearances:false}); fillForm=fillDoc.getForm();
     const {data:l}=await supabaseClient.from('logements').select('*').eq('id',logementId).single();
-    const {data:chantier}=await supabaseClient.from('chantiers').select('nom').eq('id',l?.chantier_id||'').maybeSingle();
-    // Uniquement dans DEMO : rendre modifiables les zones manquantes du modèle universel.
-    if(l && isDemoChantierName(chantier?.nom)){ addUniversalHeaderFields(fillDoc,l); }
-    const F=n=>fillForm.getField(n);
-    const val=n=>{try{const f=F(n);return (f.getSelected?.()[0]||f.getText?.()||'').toString().trim();}catch(e){return '';}};
-    // Les menus déroulants sont lus DIRECTEMENT dans le PDF.
-    // Ainsi, si tu ajoutes une marque, un modèle, une puissance ou une autre option
-    // dans le PDF, GLEN la récupère automatiquement sans modifier le code.
-    const getPdfOptions=name=>{
-      try{
-        const f=F(name);
-        if(typeof f.getOptions==='function'){
-          const opts=f.getOptions();
-          if(Array.isArray(opts) && opts.length) return opts.map(String);
-        }
-      }catch(e){}
-      return [];
-    };
-    const fieldText=(name,label,chapter,placeholder='')=>{
-      const opts=getPdfOptions(name);
-      if(opts.length) return {name,label,chapter,type:'select',value:val(name),options:opts};
-      return {name,label,chapter,type:'text',value:val(name)||placeholder};
-    };
-    const fieldQty=(name,label,chapter)=>{
-      const opts=getPdfOptions(name);
-      if(opts.length) return {name,label,chapter,type:'select',value:val(name),options:opts};
-      return {name,label,chapter,type:'text',value:val(name)};
-    };
-    const fieldCheck=(name,label,chapter)=>({name,label,chapter,type:'check',value:(()=>{try{return F(name).isChecked()}catch(e){return false}})()});
+    addUniversalHeaderFields(fillDoc,l||{}); ensureQuitusEditableFields(fillDoc);
+    const headerDefaults={GLEN_NomLocataire:l?.nom||'',GLEN_Typologie:l?.type||'',GLEN_Adresse:l?.adresse||'',GLEN_NumLogement:l?.num_log||'',GLEN_Ville:l?.commune||'',GLEN_IdLogement:l?.id||''};
+    for(const [k,v] of Object.entries(headerDefaults)){try{fillForm.getField(k).setText(v);}catch(e){}}
     const fields=[
-      fieldText('GLEN_MaitreOuvrage','Maître d’Ouvrage',1),fieldText('GLEN_Region','Région',1),fieldText('GLEN_NumProgramme','N° du programme',1),fieldText('GLEN_NumLot','N° du Lot',1),
-      fieldText('GLEN_NomLocataire','Nom du locataire',2,l?.nom||''),fieldText('GLEN_Typologie','Typologie logement',2,l?.type||''),fieldText('GLEN_Adresse','Adresse du logement',2,l?.adresse||''),fieldText('GLEN_NumLogement','Numéro de logement',2,l?.num_log||''),fieldText('GLEN_Ville','Ville',2,l?.commune||''),fieldText('GLEN_IdLogement','Id du logement',2,l?.id||''),
-      fieldText('Marque 1','Chaudière — Marque',3),fieldText('Modèle 1','Chaudière — Modèle',3),fieldText('Spécificités 1','Chaudière — Spécificité / Puissance',3),fieldQty('Nombre 1','Chaudière — Nombre',3),
-      fieldText('Marque 2','Pompe à chaleur — Marque',3),fieldText('Modèle 2','Pompe à chaleur — Modèle',3),fieldText('Spécificités 2','Pompe à chaleur — Spécificité / Puissance',3),fieldQty('Nombre 2','Pompe à chaleur — Nombre',3),
-      fieldText('Marque 3','Chauffe-bain — Marque',3),fieldText('Modèle 3','Chauffe-bain — Modèle',3),fieldText('Spécificités 3','Chauffe-bain — Spécificité / Puissance',3),fieldQty('Nombre 3','Chauffe-bain — Nombre',3),
-      fieldText('Marque 4','Radiateur 500 W — Marque',4),fieldText('Modèle 4','Radiateur 500 W — Modèle',4),fieldText('Spécificités 4','Radiateur 500 W — Spécificités',4),fieldQty('Nombre 4','Radiateur 500 W — Nombre',4),
-      fieldText('Marque 5','Radiateur 750 W — Marque',4),fieldText('Modèle 5','Radiateur 750 W — Modèle',4),fieldText('Spécificités 5','Radiateur 750 W — Spécificités',4),fieldQty('Nombre 5','Radiateur 750 W — Nombre',4),
-      fieldText('Marque 6','Radiateur 1000 W — Marque',4),fieldText('Modèle 6','Radiateur 1000 W — Modèle',4),fieldQty('Nombre 6','Radiateur 1000 W — Nombre',4),
-      fieldText('Marque 7','Radiateur 1250 W — Marque',4),fieldText('Modèle 7','Radiateur 1250 W — Modèle',4),fieldQty('Nombre 7','Radiateur 1250 W — Nombre',4),
-      fieldText('Marque 8','Radiateur 1500 W — Marque',4),fieldText('Modèle 8','Radiateur 1500 W — Modèle',4),fieldQty('Nombre 8','Radiateur 1500 W — Nombre',4),
-      fieldText('Marque 9','Radiateur 2000 W — Marque',4),fieldText('Modèle 9','Radiateur 2000 W — Modèle',4),fieldQty('Nombre 9','Radiateur 2000 W — Nombre',4),
-      fieldText('Marque 10','Sèche-serviette 500 W — Marque',4),fieldText('Modèle 10','Sèche-serviette 500 W — Modèle',4),fieldQty('Nombre 10','Sèche-serviette 500 W — Nombre',4),
-      fieldText('Marque 11','Sèche-serviette 750 W — Marque',4),fieldText('Modèle 11','Sèche-serviette 750 W — Modèle',4),fieldQty('Nombre 11','Sèche-serviette 750 W — Nombre',4),
-      fieldText('Marque 12','Eau chaude 150 L — Marque',5),fieldText('Spécificités 12','Eau chaude 150 L — Spécificités',5),fieldQty('Nombre 14','Eau chaude 150 L — Nombre',5),
-      fieldText('Marque 13','Eau chaude 200 L — Marque',5),fieldText('Spécificités 13','Eau chaude 200 L — Spécificités',5),fieldQty('Nombre 13','Eau chaude 200 L — Nombre',5),
-      fieldText('Marque 14','Eau chaude 250 L — Marque',5),fieldText('Spécificités 14','Eau chaude 250 L — Spécificités',5),fieldQty('Nombre 12','Eau chaude 250 L — Nombre',5),
-      fieldText('Marque 15','Eau chaude 300 L — Marque',5),fieldText('Spécificités 15','Eau chaude 300 L — Spécificités',5),fieldQty('Nombre 15','Eau chaude 300 L — Nombre',5),
-      fieldText('Marque 16','Caissons — Marque',6),fieldText('Modèle 16','Caissons — Modèle',6),fieldText('Spécificités 16','Caissons — Spécificités',6),fieldQty('Nombre 16','Caissons — Nombre',6),
-      fieldText('Marque 17','Bouches d’extraction — Marque',6),fieldText('Modèle 17','Bouches d’extraction — Modèle',6),fieldText('Spécificités 17','Bouches d’extraction — Spécificités',6),fieldQty('Nombre 17','Bouches d’extraction — Nombre',6),
-      fieldText('Marque 18','Mitigeur évier — Marque',7),fieldText('Modèle 18','Mitigeur évier — Modèle',7),fieldText('Spécificités 18','Mitigeur évier — Spécificités',7),fieldQty('Nombre 18','Mitigeur évier — Nombre',7),
-      fieldText('Marque 19','Mitigeur lavabo — Marque',7),fieldText('Modèle 19','Mitigeur lavabo — Modèle',7),fieldText('Spécificités 19','Mitigeur lavabo — Spécificités',7),fieldQty('Nombre 19','Mitigeur lavabo — Nombre',7),
-      fieldText('Marque 20','Mitigeur baignoire — Marque',7),fieldText('Modèle 20','Mitigeur baignoire — Modèle',7),fieldText('Spécificités 20','Mitigeur baignoire — Spécificités',7),fieldQty('Nombre 20','Mitigeur baignoire — Nombre',7),
-      fieldText('Marque 21','Mitigeur douche — Marque',7),fieldText('Modèle 21','Modèle 21',7),fieldText('Spécificités 21','Mitigeur douche — Spécificités',7),fieldQty('Nombre 21','Mitigeur douche — Nombre',7),
-      fieldText('Marque 22','Set de douche — Marque',7),fieldText('Modèle 22','Set de douche — Modèle',7),fieldText('Spécificités 22','Set de douche — Spécificités',7),fieldQty('Nombre 22','Set de douche — Nombre',7),
-      fieldCheck('Check Box1','Remplacement de la chaudière',8),fieldCheck('Check Box2','Remplacement thermostat d’ambiance',8),fieldCheck('Check Box3','Remplacement de la ventouse',8),fieldCheck('Check Box4','Désembouage et rinçage du réseau chauffage',8),fieldCheck('Check Box5','Remplacement de flexible ROAI',8),fieldCheck('Check Box6','Remplacement BAZ Pilot (si VMC gaz)',8),fieldCheck('Check Box7','Remplacement du relai DSC (si VMC gaz)',8),fieldCheck('Check Box8','Remplacement groupe sécu ballon',8),fieldCheck('Check Box9','Remplacement limiteur de pression',8),fieldCheck('Check Box10','Contrôle et mise en service',8),fieldCheck('Check Box11','Contrôle amenées d’air',8),fieldCheck('Check Box12','Contrôle pénétration du gaz dans le logement',8),fieldCheck('Check Box13','Mise en service chaudière',8),fieldCheck('Check Box14','Mise en service VMC',8),
-      fieldText('Date 1','Date des travaux réalisés dans le logement',8),
+      ...QUITUS_HEADER_FIELDS.map(([name,label])=>({name,label,chapter:2,type:'text',value:quitusCurrentValue(name,'text')})),
+      ...QUITUS_MASTER_FIELDS.map(d=>({name:d.name,label:d.label,chapter:d.chapter,type:d.type,value:quitusCurrentValue(d.name,d.type),options:d.options||[]}))
     ];
-    const wrap=document.getElementById('fillFields');
-    const chapters={}; fields.forEach(x=>(chapters[x.chapter]??=[]).push(x));
-    const titles={1:'Renseignement marché',2:'Renseignement logement',3:'Générateur',4:'Radiateurs électriques',5:'Eau chaude',6:'Ventilation',7:'Robinetterie',8:'Travaux'};
-    const renderField=x=>{
-      if(x.type==='check') return `<label class="checkbox-field"><input type="checkbox" data-fill-name="${esc(x.name)}" data-fill-type="checkbox" ${x.value?'checked':''}><span>${esc(x.label)}</span></label>`;
-      if(x.type==='qty' || x.type==='select'){
-        const opts=(x.options||[]).filter((v,i,a)=>a.indexOf(v)===i);
-        return `<label class="fill-field"><span>${esc(x.label)}</span><select data-fill-name="${esc(x.name)}" data-fill-type="dropdown">${opts.map(o=>`<option value="${esc(o)}" ${String(x.value)===String(o)?'selected':''}>${esc(o)}</option>`).join('')}</select></label>`;
-      }
-      return `<label class="fill-field"><span>${esc(x.label)}</span><input type="text" data-fill-name="${esc(x.name)}" data-fill-type="text" value="${esc(x.value)}"></label>`;
-    };
-    wrap.innerHTML=Object.keys(titles).map(k=>`<details class="chapter" ${k==='1'||k==='2'?'open':''}><summary><b>${k}. ${titles[k]}</b></summary><div class="chapter-body">${(chapters[k]||[]).map(renderField).join('')}</div></details>`).join('');
-    document.getElementById('fillMsg').textContent='Chapitres prêts à remplir.';
+    const wrap=document.getElementById('fillFields'); const chapters={}; fields.forEach(x=>(chapters[x.chapter]??=[]).push(x));
+    const render=x=>x.type==='check'?`<label class="checkbox-field"><input type="checkbox" data-fill-name="${esc(x.name)}" data-fill-type="checkbox" ${x.value?'checked':''}><span>${esc(x.label)}</span></label>`:x.type==='select'?`<label class="fill-field"><span>${esc(x.label)}</span><select data-fill-name="${esc(x.name)}" data-fill-type="dropdown">${(x.options||[]).map(o=>`<option value="${esc(o)}" ${String(x.value)===String(o)?'selected':''}>${esc(String(o).replace(/\u00a0/g,' '))}</option>`).join('')}</select></label>`:`<label class="fill-field"><span>${esc(x.label)}</span><input type="text" data-fill-name="${esc(x.name)}" data-fill-type="text" value="${esc(x.value||'')}"></label>`;
+    wrap.innerHTML=Object.keys(QUITUS_TITLES).map(k=>`<details class="chapter" ${k==='1'||k==='2'?'open':''}><summary><b>${k}. ${QUITUS_TITLES[k]}</b></summary><div class="chapter-body">${(chapters[k]||[]).map(render).join('')}</div></details>`).join('');
+    document.getElementById('fillMsg').textContent=`${QUITUS_MASTER_FIELDS.length} champs du modèle prêts à remplir. Le PDF restera modifiable après enregistrement.`;
   }catch(e){const m=document.getElementById('fillMsg');if(m){m.className='error';m.textContent='Erreur : '+(e?.message||e);}}
 }
 function closeFillPdf(){document.getElementById('fillModal')?.remove();fillPdfId=null;fillLogementId=null;fillDoc=null;fillForm=null;}
@@ -942,7 +810,7 @@ async function saveFilledPdf(){
     });
 
     // Conserve les champs du PDF original et les signatures déjà présentes.
-    const saved=await fillDoc.save({updateFieldAppearances:true});
+    const saved=await fillDoc.save({updateFieldAppearances:true,useObjectStreams:false});
     const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',fillPdfId).single();
     if(error||!pdf)throw error||new Error('PDF introuvable.');
 
