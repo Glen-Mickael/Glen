@@ -638,10 +638,14 @@ async function extractQuitusSummary(pdfBlob){
   }catch(e){console.warn('Lecture du Quitus pour le rapport impossible :',e);}
   return rows;
 }
-function buildLogementReportHtml(l,comment,photosCount,quitusRows){
+function buildLogementReportHtml(l,comment,photos,quitusRows){
   const escHtml=v=>esc(String(v??''));
-  const lines=quitusRows.length?quitusRows.map(r=>`<tr><td>${escHtml(r.label)}</td><td>${escHtml(r.value)}</td></tr>`).join(''):'<tr><td colspan="2">Aucune fourniture ou intervention renseignée dans le Quitus.</td></tr>';
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Rapport - ${escHtml(l.nom||'Logement')}</title><style>body{font-family:Arial,sans-serif;margin:35px;color:#222}h1{margin-bottom:4px}h2{margin-top:28px;border-bottom:1px solid #ccc;padding-bottom:6px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:7px;text-align:left}th{background:#f2f2f2}.comment{white-space:pre-wrap;border:1px solid #ccc;padding:12px;min-height:70px}.meta{line-height:1.7}</style></head><body><h1>Rapport logement</h1><div class="meta"><b>Nom / prénom :</b> ${escHtml(l.nom)}<br><b>Adresse :</b> ${escHtml(l.adresse)}<br><b>Code postal :</b> ${escHtml(l.code)}<br><b>Commune :</b> ${escHtml(l.commune)}<br><b>Téléphone :</b> ${escHtml(l.telephone)}<br><b>Email :</b> ${escHtml(l.mail)}<br><b>Bâtiment :</b> ${escHtml(l.num_bat)}<br><b>Logement :</b> ${escHtml(l.num_log)}<br><b>Étage :</b> ${escHtml(l.etage)}<br><b>Type :</b> ${escHtml(l.type)}<br><b>Statut :</b> ${escHtml(l.statut||'À faire')}<br><b>Photos :</b> ${photosCount}</div><h2>Commentaire</h2><div class="comment">${escHtml(comment)||'Aucun commentaire.'}</div><h2>Fournitures / travaux renseignés</h2><table><thead><tr><th>Désignation</th><th>Valeur</th></tr></thead><tbody>${lines}</tbody></table></body></html>`;
+  const rows=Array.isArray(quitusRows)?quitusRows:[];
+  const lines=rows.length?rows.map(r=>`<tr><td>${escHtml(r.label)}</td><td>${escHtml(r.value)}</td></tr>`).join(''):'<tr><td colspan="2">Aucune fourniture ou intervention renseignée dans le Quitus.</td></tr>';
+  const photoList=Array.isArray(photos)?photos:[];
+  const gallery=photoList.length?photoList.map((p,i)=>`<div class="photo"><img src="Photos/${escHtml(p.fileName||`photo_${String(i+1).padStart(2,'0')}.jpg`)}" alt="Photo ${i+1}"><div>Photo ${i+1}</div></div>`).join(''):'<p>Aucune photo.</p>';
+  const quitusLink=l._quitusFileName?`<p>📄 <a href="Quitus/${encodeURIComponent(l._quitusFileName)}">Ouvrir le Quitus</a></p>`:'<p>Aucun Quitus exporté.</p>';
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Rapport - ${escHtml(l.nom||'Logement')}</title><style>body{font-family:Arial,sans-serif;margin:35px;color:#222}h1{margin-bottom:4px}h2{margin-top:28px;border-bottom:1px solid #ccc;padding-bottom:6px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:7px;text-align:left}th{background:#f2f2f2}.comment{white-space:pre-wrap;border:1px solid #ccc;padding:12px;min-height:70px}.meta{line-height:1.7}.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.photo{border:1px solid #ddd;padding:6px}.photo img{width:100%;height:180px;object-fit:cover}.photo div{text-align:center;font-size:12px;margin-top:4px}@media print{a{color:#222;text-decoration:none}}</style></head><body><h1>Rapport logement</h1><div class="meta"><b>Nom / prénom :</b> ${escHtml(l.nom)}<br><b>Adresse :</b> ${escHtml(l.adresse)}<br><b>Code postal :</b> ${escHtml(l.code)}<br><b>Commune :</b> ${escHtml(l.commune)}<br><b>Téléphone :</b> ${escHtml(l.telephone)}<br><b>Email :</b> ${escHtml(l.mail)}<br><b>Bâtiment :</b> ${escHtml(l.num_bat)}<br><b>Logement :</b> ${escHtml(l.num_log)}<br><b>Étage :</b> ${escHtml(l.etage)}<br><b>Type :</b> ${escHtml(l.type)}<br><b>Statut :</b> ${escHtml(l.statut||'À faire')}<br><b>Nombre de photos :</b> ${photoList.length}</div><h2>Commentaire</h2><div class="comment">${escHtml(comment)||'Aucun commentaire.'}</div><h2>Quitus</h2>${quitusLink}<h2>Fournitures / travaux renseignés</h2><table><thead><tr><th>Désignation</th><th>Valeur</th></tr></thead><tbody>${lines}</tbody></table><h2>Photos</h2><div class="gallery">${gallery}</div></body></html>`;
 }
 async function exportLogementDossier(logementId){
   try{
@@ -662,9 +666,11 @@ async function exportLogementDossier(logementId){
       if(!blob&&p.public_url){const r=await fetch(p.public_url);if(r.ok)blob=await r.blob();}
       if(blob)photoFolder.file(`photo_${String(i+1).padStart(2,'0')}.jpg`,blob);
     }
-    let pdfBlob=null,quitusRows=[];
-    if(pdf){const {data:u,error:ue}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);if(!ue&&u?.signedUrl){const r=await fetch(u.signedUrl);if(r.ok){pdfBlob=await r.blob();folder.folder('Quitus').file(safeExportName(pdf.original_filename||'Quitus.pdf'),pdfBlob);quitusRows=await extractQuitusSummary(pdfBlob);}}}
-    folder.file('Rapport logement.html',buildLogementReportHtml(l,comment,(photos||[]).length,quitusRows));
+    let pdfBlob=null,quitusRows=[],quitusFileName='';
+    if(pdf){const {data:u,error:ue}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);if(!ue&&u?.signedUrl){const r=await fetch(u.signedUrl);if(r.ok){pdfBlob=await r.blob();quitusFileName=safeExportName(pdf.original_filename||'Quitus.pdf');folder.folder('Quitus').file(quitusFileName,pdfBlob);quitusRows=await extractQuitusSummary(pdfBlob);}}}
+    const reportPhotos=(photos||[]).map((p,i)=>({fileName:`photo_${String(i+1).padStart(2,'0')}.jpg`}));
+    const reportLogement={...l,_quitusFileName:quitusFileName};
+    folder.file('Rapport logement.html',buildLogementReportHtml(reportLogement,comment,reportPhotos,quitusRows));
     const infos=[`Nom / prénom : ${l.nom||''}`,`Adresse : ${l.adresse||''}`,`Code : ${l.code||''}`,`Commune : ${l.commune||''}`,`Téléphone : ${l.telephone||''}`,`Mail : ${l.mail||''}`,`N° Bat : ${l.num_bat||''}`,`N° Log : ${l.num_log||''}`,`Étage : ${l.etage||''}`,`Type : ${l.type||''}`,`Statut : ${l.statut||'À faire'}`,`Terminé le : ${l.termine_at?new Date(l.termine_at).toLocaleString('fr-FR'):''}`,`Commentaire :\n${comment||'Aucun commentaire.'}`].join('\n');
     folder.file('Informations logement.txt',infos);
     const blob=await zip.generateAsync({type:'blob'});
