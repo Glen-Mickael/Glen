@@ -15,7 +15,7 @@ input{width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;font-s
 .item{border:1px solid #dce3e9;border-radius:14px;padding:15px;margin:10px 0}.item h3{margin:0 0 5px}.item p{margin:4px 0}
 .badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#e9f1f8;color:#203a5d;font-size:13px;font-weight:700}
 .hidden{display:none!important}
-.pdf-box{border:1px solid #dce3e9;border-radius:14px;padding:15px;margin:10px 0;background:#fafcfe}.pdf-name{font-weight:700;word-break:break-word}.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:12px}.photo-card{border:1px solid #dce3e9;border-radius:12px;padding:8px;background:#fff}.photo-card img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:9px;display:block}.photo-card .small{font-size:12px;margin:6px 0}.file-label{display:inline-block}
+.pdf-box{border:1px solid #dce3e9;border-radius:14px;padding:15px;margin:10px 0;background:#fafcfe}.pdf-name{font-weight:700;word-break:break-word}.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:12px}.photo-card{border:1px solid #dce3e9;border-radius:12px;padding:8px;background:#fff}.photo-card img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:9px;display:block}.photo-card .small{font-size:12px;margin:6px 0}.file-label{display:inline-block}.password-wrap{position:relative;display:flex;align-items:center}.password-wrap input{width:100%;padding-right:46px}.password-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;cursor:pointer;font-size:20px;padding:7px 10px}.comment-box{margin:14px 0;padding:14px;border:1px solid #dce3e9;border-radius:14px;background:#fafcfe}.comment-box textarea{min-height:110px;resize:vertical}.report-table{width:100%;border-collapse:collapse;margin-top:10px}.report-table th,.report-table td{border:1px solid #dce3e9;padding:7px;text-align:left;font-size:13px}.report-table th{background:#f3f6f8}
 label{font-weight:600}
 hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 #app{min-height:70vh}.fill-field{display:block;margin:10px 0}.fill-field>span{display:block;font-weight:700;font-size:14px;margin-bottom:5px}.fill-field input[type=text],.fill-field select{width:100%;padding:10px;border:1px solid #c9d3dc;border-radius:8px;font-size:16px;background:#fff}.checkbox-field{display:flex;align-items:center;gap:10px;padding:8px 0}.checkbox-field span{margin:0}.checkbox-field input{width:20px;height:20px}
@@ -150,11 +150,52 @@ async function init(){
   else loginView();
 }
 
+function togglePasswordVisibility(id,btn){
+  const input=document.getElementById(id);
+  if(!input)return;
+  const show=input.type==='password';
+  input.type=show?'text':'password';
+  if(btn)btn.textContent=show?'🙈':'👁️';
+  if(btn)btn.setAttribute('aria-label',show?'Masquer le mot de passe':'Afficher le mot de passe');
+}
+
+function getLocalComment(logementId){
+  try{return localStorage.getItem('glen_commentaire_'+logementId)||'';}catch(e){return '';}
+}
+function setLocalComment(logementId,value){
+  try{localStorage.setItem('glen_commentaire_'+logementId,value||'');}catch(e){}
+}
+function startCommentDictation(){
+  const ta=document.getElementById('logementComment');
+  const btn=document.getElementById('dictationBtn');
+  if(!ta)return;
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){alert('La dictée vocale n’est pas disponible sur ce navigateur. Utilise Chrome/Edge et autorise le microphone.');return;}
+  const rec=new SR(); rec.lang='fr-FR'; rec.interimResults=false; rec.continuous=false;
+  if(btn){btn.disabled=true;btn.textContent='🎙️ Écoute…';}
+  rec.onresult=e=>{const t=e.results?.[0]?.[0]?.transcript||''; ta.value=(ta.value.trim()?ta.value.trim()+' ':'')+t;};
+  rec.onerror=e=>alert('Dictée vocale : '+(e.error||'erreur'));
+  rec.onend=()=>{if(btn){btn.disabled=false;btn.textContent='🎙️ Dicter';}};
+  rec.start();
+}
+async function saveLogementComment(logementId){
+  const ta=document.getElementById('logementComment');
+  const msg=document.getElementById('commentMsg');
+  const value=ta?.value?.trim()||'';
+  setLocalComment(logementId,value);
+  try{
+    const {error}=await supabaseClient.from('logements').update({commentaire:value}).eq('id',logementId);
+    if(error)throw error;
+    if(msg){msg.className='ok';msg.textContent='Commentaire enregistré.';}
+  }catch(e){
+    if(msg){msg.className='small';msg.textContent='Commentaire enregistré sur cet appareil. Pour le partager entre téléphones/PC, ajoute la colonne commentaire dans Supabase.';}
+  }
+}
 function loginView(){
   app.innerHTML=`<div class="card">
     <h2>Connexion</h2>
     <label>Email</label><input id="email" type="email" autocomplete="username">
-    <label>Mot de passe</label><input id="password" type="password" autocomplete="current-password">
+    <label>Mot de passe</label><div class="password-wrap"><input id="password" type="password" autocomplete="current-password"><button type="button" class="password-eye" onclick="togglePasswordVisibility('password',this)" aria-label="Afficher le mot de passe">👁️</button></div>
     <button class="btn" onclick="login()">Se connecter</button>
     <div id="msg"></div>
   </div>`;
@@ -228,7 +269,7 @@ async function managePoseurs(){
       <h3>➕ Nouveau poseur</h3>
       <label>Nom / prénom</label><input id="newPoseurName" type="text" placeholder="Ex. Damien Dumas" autocomplete="name">
       <label>Email</label><input id="newPoseurEmail" type="email" placeholder="poseur@glen.fr" autocomplete="email">
-      <label>Mot de passe provisoire</label><input id="newPoseurPassword" type="password" placeholder="Minimum 4 caractères" autocomplete="new-password">
+      <label>Mot de passe provisoire</label><div class="password-wrap"><input id="newPoseurPassword" type="password" placeholder="Minimum 4 caractères" autocomplete="new-password"><button type="button" class="password-eye" onclick="togglePasswordVisibility('newPoseurPassword',this)" aria-label="Afficher le mot de passe">👁️</button></div>
       <button class="btn" onclick="createPoseur()">➕ Créer le compte poseur</button>
       <div id="poseurCreateMsg"></div>
     </div>
@@ -456,6 +497,7 @@ async function openLogement(id,mode='poseur'){
   app.innerHTML=`<div class="card">
     <div class="row"><button class="btn secondary" onclick="${back}">← Retour</button>${mode==='admin'?'<span class="badge">ADMINISTRATEUR</span>':'<span class="badge">POSEUR</span>'}</div>
     <h2>${esc(l.nom||"Logement")}</h2><p>${esc(l.adresse||"")}</p>
+    <div class="comment-box"><h3 style="margin-top:0">📝 Commentaire</h3><textarea id="logementComment" placeholder="Écrire un commentaire ou utiliser la dictée vocale…">${esc(l.commentaire||getLocalComment(l.id))}</textarea><div class="row" style="margin-top:8px"><button class="btn secondary" id="dictationBtn" type="button" onclick="startCommentDictation()">🎙️ Dicter</button><button class="btn" type="button" onclick="saveLogementComment('${l.id}')">💾 Enregistrer le commentaire</button></div><div id="commentMsg" class="small"></div></div>
     <hr><h3>📄 Document PDF original</h3>
     ${mode==='admin'?`<label class="btn file-label">📄 ${pdf?'Remplacer le PDF':'Ajouter le PDF original'}<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadPdf('${l.id}',this.files[0])"></label>`:''}
     <div id="pdfMsg"></div>
@@ -518,6 +560,33 @@ async function exportChantierDossier(chantierId){
   }catch(e){alert('Erreur export chantier : '+e.message);}
 }
 
+async function extractQuitusSummary(pdfBlob){
+  const rows=[];
+  try{
+    const bytes=await pdfBlob.arrayBuffer();
+    const doc=await PDFLib.PDFDocument.load(bytes,{updateFieldAppearances:false});
+    const form=doc.getForm();
+    const fields=typeof QUITUS_MASTER_FIELDS!=='undefined'?QUITUS_MASTER_FIELDS:[];
+    for(const d of fields){
+      let value='';
+      try{
+        const f=form.getField(d.source||d.name);
+        if(d.type==='check') value=f.isChecked()?'Oui':'';
+        else if(d.type==='select') value=(f.getSelected?.()||[])[0]||'';
+        else value=f.getText?.()||'';
+      }catch(e){}
+      value=String(value||'').replace(/\s+/g,' ').trim();
+      if(value && value!=='Oui' && value!=='Non') rows.push({label:d.label||d.name,value});
+      else if(value==='Oui') rows.push({label:d.label||d.name,value});
+    }
+  }catch(e){console.warn('Lecture du Quitus pour le rapport impossible :',e);}
+  return rows;
+}
+function buildLogementReportHtml(l,comment,photosCount,quitusRows){
+  const escHtml=v=>esc(String(v??''));
+  const lines=quitusRows.length?quitusRows.map(r=>`<tr><td>${escHtml(r.label)}</td><td>${escHtml(r.value)}</td></tr>`).join(''):'<tr><td colspan="2">Aucune fourniture ou intervention renseignée dans le Quitus.</td></tr>';
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Rapport - ${escHtml(l.nom||'Logement')}</title><style>body{font-family:Arial,sans-serif;margin:35px;color:#222}h1{margin-bottom:4px}h2{margin-top:28px;border-bottom:1px solid #ccc;padding-bottom:6px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:7px;text-align:left}th{background:#f2f2f2}.comment{white-space:pre-wrap;border:1px solid #ccc;padding:12px;min-height:70px}.meta{line-height:1.7}</style></head><body><h1>Rapport logement</h1><div class="meta"><b>Nom / prénom :</b> ${escHtml(l.nom)}<br><b>Adresse :</b> ${escHtml(l.adresse)}<br><b>Code postal :</b> ${escHtml(l.code)}<br><b>Commune :</b> ${escHtml(l.commune)}<br><b>Téléphone :</b> ${escHtml(l.telephone)}<br><b>Email :</b> ${escHtml(l.mail)}<br><b>Bâtiment :</b> ${escHtml(l.num_bat)}<br><b>Logement :</b> ${escHtml(l.num_log)}<br><b>Étage :</b> ${escHtml(l.etage)}<br><b>Type :</b> ${escHtml(l.type)}<br><b>Statut :</b> ${escHtml(l.statut||'À faire')}<br><b>Photos :</b> ${photosCount}</div><h2>Commentaire</h2><div class="comment">${escHtml(comment)||'Aucun commentaire.'}</div><h2>Fournitures / travaux renseignés</h2><table><thead><tr><th>Désignation</th><th>Valeur</th></tr></thead><tbody>${lines}</tbody></table></body></html>`;
+}
 async function exportLogementDossier(logementId){
   try{
     const btn=event?.currentTarget; if(btn){btn.disabled=true;btn.textContent='⏳ Export…';}
@@ -527,37 +596,20 @@ async function exportLogementDossier(logementId){
     if(pe) throw pe;
     const {data:pdf,error:de}=await supabaseClient.from('pdf_documents').select('*').eq('logement_id',logementId).maybeSingle();
     if(de) throw de;
+    const comment=l.commentaire||getLocalComment(logementId)||'';
     const zip=new JSZip();
     const folder=zip.folder(safeExportName(l.nom||'Logement'));
     const photoFolder=folder.folder('Photos');
     for(let i=0;i<(photos||[]).length;i++){
-      const p=photos[i];
-      let blob=null;
-      if(p.storage_path){
-        const {data:u,error:ue}=await supabaseClient.storage.from('glen-photos').createSignedUrl(p.storage_path,3600);
-        if(!ue&&u?.signedUrl){const r=await fetch(u.signedUrl);if(r.ok)blob=await r.blob();}
-      }
-      if(!blob && p.public_url){const r=await fetch(p.public_url);if(r.ok)blob=await r.blob();}
-      if(blob) photoFolder.file(`photo_${String(i+1).padStart(2,'0')}.jpg`,blob);
+      const p=photos[i]; let blob=null;
+      if(p.storage_path){const {data:u,error:ue}=await supabaseClient.storage.from('glen-photos').createSignedUrl(p.storage_path,3600);if(!ue&&u?.signedUrl){const r=await fetch(u.signedUrl);if(r.ok)blob=await r.blob();}}
+      if(!blob&&p.public_url){const r=await fetch(p.public_url);if(r.ok)blob=await r.blob();}
+      if(blob)photoFolder.file(`photo_${String(i+1).padStart(2,'0')}.jpg`,blob);
     }
-    if(pdf){
-      const {data:u,error:ue}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);
-      if(!ue&&u?.signedUrl){const r=await fetch(u.signedUrl);if(r.ok) folder.folder('Quitus').file(safeExportName(pdf.original_filename||'Quitus.pdf'),await r.blob());}
-    }
-    const infos=[
-      `Logement : ${l.nom||''}`,
-      `Adresse : ${l.adresse||''}`,
-      `Code : ${l.code||''}`,
-      `Commune : ${l.commune||''}`,
-      `Téléphone : ${l.telephone||''}`,
-      `Mail : ${l.mail||''}`,
-      `N° Bat : ${l.num_bat||''}`,
-      `N° Log : ${l.num_log||''}`,
-      `Étage : ${l.etage||''}`,
-      `Type : ${l.type||''}`,
-      `Statut : ${l.statut||'À faire'}`,
-      `Terminé le : ${l.termine_at?new Date(l.termine_at).toLocaleString('fr-FR'):''}`
-    ].join('\n');
+    let pdfBlob=null,quitusRows=[];
+    if(pdf){const {data:u,error:ue}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);if(!ue&&u?.signedUrl){const r=await fetch(u.signedUrl);if(r.ok){pdfBlob=await r.blob();folder.folder('Quitus').file(safeExportName(pdf.original_filename||'Quitus.pdf'),pdfBlob);quitusRows=await extractQuitusSummary(pdfBlob);}}}
+    folder.file('Rapport logement.html',buildLogementReportHtml(l,comment,(photos||[]).length,quitusRows));
+    const infos=[`Nom / prénom : ${l.nom||''}`,`Adresse : ${l.adresse||''}`,`Code : ${l.code||''}`,`Commune : ${l.commune||''}`,`Téléphone : ${l.telephone||''}`,`Mail : ${l.mail||''}`,`N° Bat : ${l.num_bat||''}`,`N° Log : ${l.num_log||''}`,`Étage : ${l.etage||''}`,`Type : ${l.type||''}`,`Statut : ${l.statut||'À faire'}`,`Terminé le : ${l.termine_at?new Date(l.termine_at).toLocaleString('fr-FR'):''}`,`Commentaire :\n${comment||'Aucun commentaire.'}`].join('\n');
     folder.file('Informations logement.txt',infos);
     const blob=await zip.generateAsync({type:'blob'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`Dossier_${safeExportName(l.nom||'Logement')}.zip`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
