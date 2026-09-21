@@ -678,7 +678,22 @@ function buildLogementReportHtml(l,comment,photos,quitusRows){
   <footer class="footer"><span>GLEN — Génie Climatique</span><span>Rapport d'intervention — ${escHtml(l.nom||'Logement')}</span></footer>
   </main><script>
 const EMBEDDED_QUITUS_DATA="${quitusData}";
-function openEmbeddedQuitus(){try{if(!EMBEDDED_QUITUS_DATA){alert("Quitus introuvable dans le rapport.");return;}const a=document.createElement("a");a.href=EMBEDDED_QUITUS_DATA;a.target="_blank";a.rel="noopener noreferrer";a.download="";document.body.appendChild(a);a.click();a.remove();}catch(e){alert("Impossible d’ouvrir le Quitus : "+e.message);}}
+function openEmbeddedQuitus(){try{
+  if(!EMBEDDED_QUITUS_DATA){alert("Quitus introuvable dans le rapport.");return;}
+  const parts=EMBEDDED_QUITUS_DATA.split(",");
+  if(parts.length<2){throw new Error("Données du Quitus invalides.");}
+  const mime=(parts[0].match(/data:([^;]+);base64/i)||[])[1]||"application/pdf";
+  const binary=atob(parts.slice(1).join(","));
+  const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+  const url=URL.createObjectURL(new Blob([bytes],{type:mime}));
+  const win=window.open(url,"_blank");
+  if(!win){
+    const iframe=document.createElement("iframe");
+    iframe.style.display="none"; iframe.src=url; document.body.appendChild(iframe);
+  }
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}catch(e){alert("Impossible d’ouvrir le Quitus : "+e.message);}}
 function openPackagedQuitus(){window.open("Quitus/${encodeURIComponent(l._quitusFileName||'Quitus.pdf')}","_blank");}
 <\/script></body></html>`;
 }
