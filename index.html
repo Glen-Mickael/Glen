@@ -962,7 +962,7 @@ async function openPdf(pdfId){
       alert("Le quitus enregistré n'est pas conforme au modèle maître. Il n'a pas été ouvert.");
       return;
     }
-    window.open(u,'_blank','noopener');
+    window.open(u.signedUrl,'_blank','noopener');
   }catch(e){
     alert('Impossible de vérifier le PDF : '+(e?.message||e));
   }
