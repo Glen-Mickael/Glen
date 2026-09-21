@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="GLEN">
 
 <meta name="theme-color" content="#203a5d">
-<title>GLEN — Appli GLEN</title>
+<title>GLEN — V47 Export autonome</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
@@ -658,8 +658,8 @@ function buildLogementReportHtml(l,comment,photos,quitusRows){
   ];
   const infoCells=info.map(([k,v])=>`<div class="info-cell"><div class="info-label">${escHtml(k)}</div><div class="info-value">${escHtml(v||'—')}</div></div>`).join('');
   const lines=rows.length?rows.map(r=>`<tr><td>${escHtml(r.label)}</td><td>${escHtml(r.value)}</td></tr>`).join(''):'<tr><td colspan="2" class="empty">Aucune fourniture ou intervention renseignée dans le Quitus.</td></tr>';
-  const gallery=photoList.length?photoList.map((p,i)=>`<figure class="photo"><img src="Photos/${escHtml(p.fileName||`photo_${String(i+1).padStart(2,'0')}.jpg`)}" alt="Photo ${i+1}"><figcaption>Photo ${i+1}</figcaption></figure>`).join(''):'<div class="empty-box">Aucune photo enregistrée.</div>';
-  const quitusLink=l._quitusFileName?`<a class="doc-link" href="Quitus/${encodeURIComponent(l._quitusFileName)}">📄 Ouvrir le Quitus</a>`:'<span class="muted">Aucun Quitus exporté.</span>';
+  const gallery=photoList.length?photoList.map((p,i)=>{const src=p.dataUrl||`Photos/${escHtml(p.fileName||`photo_${String(i+1).padStart(2,'0')}.jpg`)}`;return `<figure class="photo"><img src="${src}" alt="Photo ${i+1}"><figcaption>Photo ${i+1}</figcaption></figure>`}).join(''):'<div class="empty-box">Aucune photo enregistrée.</div>';
+  const quitusLink=l._quitusDataUrl?`<a class="doc-link" href="${l._quitusDataUrl}" target="_blank" rel="noopener">📄 Voir le Quitus</a>`:(l._quitusFileName?`<a class="doc-link" href="Quitus/${encodeURIComponent(l._quitusFileName)}" target="_blank" rel="noopener">📄 Voir le Quitus</a>`:'<span class="muted">Aucun Quitus exporté.</span>');
   const dateRapport=new Date().toLocaleDateString('fr-FR');
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rapport d'intervention - ${escHtml(l.nom||'Logement')}</title><style>
   *{box-sizing:border-box}body{margin:0;background:#f3f6f9;color:#172033;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.45}.page{max-width:1100px;margin:28px auto;background:#fff;padding:34px 42px;box-shadow:0 2px 14px rgba(20,40,70,.10)}
@@ -678,6 +678,17 @@ function buildLogementReportHtml(l,comment,photos,quitusRows){
   <footer class="footer"><span>GLEN — Génie Climatique</span><span>Rapport d'intervention — ${escHtml(l.nom||'Logement')}</span></footer>
   </main></body></html>`;
 }
+function blobToDataUrl(blob){
+  return new Promise((resolve,reject)=>{
+    try{
+      const reader=new FileReader();
+      reader.onload=()=>resolve(String(reader.result||''));
+      reader.onerror=()=>reject(reader.error||new Error('Lecture du fichier impossible.'));
+      reader.readAsDataURL(blob);
+    }catch(e){reject(e);}
+  });
+}
+
 async function exportLogementDossier(logementId){
   try{
     const btn=event?.currentTarget; if(btn){btn.disabled=true;btn.textContent='⏳ Export…';}
@@ -691,16 +702,34 @@ async function exportLogementDossier(logementId){
     const zip=new JSZip();
     const folder=zip.folder(safeExportName(l.nom||'Logement'));
     const photoFolder=folder.folder('Photos');
+    const reportPhotos=[];
     for(let i=0;i<(photos||[]).length;i++){
       const p=photos[i]; let blob=null;
       if(p.storage_path){const {data:u,error:ue}=await supabaseClient.storage.from('glen-photos').createSignedUrl(p.storage_path,3600);if(!ue&&u?.signedUrl){const r=await fetch(u.signedUrl);if(r.ok)blob=await r.blob();}}
       if(!blob&&p.public_url){const r=await fetch(p.public_url);if(r.ok)blob=await r.blob();}
-      if(blob)photoFolder.file(`photo_${String(i+1).padStart(2,'0')}.jpg`,blob);
+      const fileName=`photo_${String(i+1).padStart(2,'0')}.jpg`;
+      if(blob){
+        photoFolder.file(fileName,blob);
+        let dataUrl='';
+        try{dataUrl=await blobToDataUrl(blob);}catch(e){console.warn('Photo non intégrable au rapport :',e);}
+        reportPhotos.push({fileName,dataUrl});
+      }
     }
-    let pdfBlob=null,quitusRows=[],quitusFileName='';
-    if(pdf){const {data:u,error:ue}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);if(!ue&&u?.signedUrl){const r=await fetch(u.signedUrl);if(r.ok){pdfBlob=await r.blob();quitusFileName=safeExportName(pdf.original_filename||'Quitus.pdf');folder.folder('Quitus').file(quitusFileName,pdfBlob);quitusRows=await extractQuitusSummary(pdfBlob);}}}
-    const reportPhotos=(photos||[]).map((p,i)=>({fileName:`photo_${String(i+1).padStart(2,'0')}.jpg`}));
-    const reportLogement={...l,_quitusFileName:quitusFileName};
+    let pdfBlob=null,quitusRows=[],quitusFileName='',quitusDataUrl='';
+    if(pdf){
+      const {data:u,error:ue}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);
+      if(!ue&&u?.signedUrl){
+        const r=await fetch(u.signedUrl);
+        if(r.ok){
+          pdfBlob=await r.blob();
+          quitusFileName=safeExportName(pdf.original_filename||'Quitus.pdf');
+          folder.folder('Quitus').file(quitusFileName,pdfBlob);
+          quitusRows=await extractQuitusSummary(pdfBlob);
+          try{quitusDataUrl=await blobToDataUrl(pdfBlob);}catch(e){console.warn('Quitus non intégrable au rapport :',e);}
+        }
+      }
+    }
+    const reportLogement={...l,_quitusFileName:quitusFileName,_quitusDataUrl:quitusDataUrl};
     folder.file('Rapport logement.html',buildLogementReportHtml(reportLogement,comment,reportPhotos,quitusRows));
     const infos=[`Nom / prénom : ${l.nom||''}`,`Adresse : ${l.adresse||''}`,`Code : ${l.code||''}`,`Commune : ${l.commune||''}`,`Téléphone : ${l.telephone||''}`,`Mail : ${l.mail||''}`,`N° Bat : ${l.num_bat||''}`,`N° Log : ${l.num_log||''}`,`Étage : ${l.etage||''}`,`Type : ${l.type||''}`,`Statut : ${l.statut||'À faire'}`,`Terminé le : ${l.termine_at?new Date(l.termine_at).toLocaleString('fr-FR'):''}`,`Commentaire :\n${comment||'Aucun commentaire.'}`].join('\n');
     folder.file('Informations logement.txt',infos);
@@ -708,6 +737,7 @@ async function exportLogementDossier(logementId){
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`Dossier_${safeExportName(l.nom||'Logement')}.zip`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   }catch(e){alert('Erreur export : '+e.message);}finally{const b=event?.currentTarget;if(b){b.disabled=false;b.textContent='📦 Exporter le dossier';}}
 }
+
 function safeExportName(v){return String(v||'Logement').replace(/[\\/:*?"<>|]/g,'_').replace(/\s+/g,' ').trim().slice(0,100)||'Logement';}
 
 async function uploadPdf(logementId,file){
