@@ -788,7 +788,7 @@ function quitusCurrentValue(name,type){
 
 async function openFillPdf(pdfId,logementId){
   fillPdfId=pdfId; fillLogementId=logementId;
-  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <span class="small">V34</span></h2><p class="sig-note">Les champs du modèle maître sont conservés à leur emplacement d'origine. Le PDF exporté reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <span class="small">V35</span></h2><p class="sig-note">Les champs du modèle maître sont conservés à leur emplacement d'origine. Le PDF exporté reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
   try{
     const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single(); if(error||!pdf)throw error||new Error('PDF introuvable.');
     const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600); if(se)throw se;
@@ -859,14 +859,29 @@ async function saveFilledPdf(){
     // Ouvre uniquement le PDF réel. Aucun about:blank n'est créé.
     const opened=window.open(urlData.signedUrl,'_blank','noopener,noreferrer');
     if(opened){
-      setTimeout(()=>{closeFillPdf();},700);
+      // V35 : garder le formulaire ouvert pendant que le PDF est consulté,
+      // puis revenir automatiquement à la page normale dès que l'utilisateur
+      // ferme l'onglet/fenêtre du PDF. Il n'est plus nécessaire de cliquer
+      // sur « Annuler » dans le formulaire.
+      const watchPdf=()=>{
+        try{
+          if(opened.closed){
+            closeFillPdf();
+            return;
+          }
+          setTimeout(watchPdf,500);
+        }catch(e){
+          // Si le navigateur ne permet plus d'interroger la fenêtre,
+          // on conserve le formulaire et le bouton de fermeture normal.
+        }
+      };
+      setTimeout(watchPdf,500);
     }else{
       // Si le navigateur bloque l'ouverture après l'opération asynchrone,
       // on laisse un bouton explicite dans la fenêtre pour ouvrir le PDF.
       msg.innerHTML='PDF enregistré. <button class="btn" type="button" onclick="window.open(\''+urlData.signedUrl.replace(/'/g,"%27")+'\',\'_blank\',\'noopener,noreferrer\')">📄 Ouvrir le PDF</button>';
     }
   }catch(e){
-    if(pdfWindow && !pdfWindow.closed) pdfWindow.close();
     msg.className='error';
     msg.textContent='Erreur : '+(e?.message||e);
   }
