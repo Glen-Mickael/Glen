@@ -246,13 +246,21 @@ async function saveLogementComment(logementId){
   const ta=document.getElementById('logementComment');
   const msg=document.getElementById('commentMsg');
   const value=ta?.value?.trim()||'';
-  setLocalComment(logementId,value);
   try{
     const {error}=await supabaseClient.from('logements').update({commentaire:value}).eq('id',logementId);
     if(error)throw error;
-    if(msg){msg.className='ok';msg.textContent='Commentaire enregistré.';}
+    setLocalComment(logementId,value);
+    if(msg){
+      msg.className='ok';
+      msg.textContent='✅ Commentaire enregistré et partagé avec les autres appareils.';
+    }
   }catch(e){
-    if(msg){msg.className='small';msg.textContent='Commentaire enregistré sur cet appareil. Pour le partager entre téléphones/PC, ajoute la colonne commentaire dans Supabase.';}
+    console.error('Erreur enregistrement commentaire Supabase:',e);
+    setLocalComment(logementId,value);
+    if(msg){
+      msg.className='small';
+      msg.textContent='⚠️ Le commentaire n’a pas pu être partagé. Vérifie que la colonne « commentaire » existe dans Supabase.';
+    }
   }
 }
 function loginView(){
@@ -561,7 +569,7 @@ async function openLogement(id,mode='poseur'){
   app.innerHTML=`<div class="card">
     <div class="row"><button class="btn secondary" onclick="${back}">← Retour</button>${mode==='admin'?'<span class="badge">ADMINISTRATEUR</span>':'<span class="badge">POSEUR</span>'}</div>
     <h2>${esc(l.nom||"Logement")}</h2><p>${esc(l.adresse||"")}</p>
-    <div class="comment-box"><h3>📝 Commentaire</h3><textarea id="logementComment" placeholder="Écrire un commentaire ou utiliser la dictée vocale…">${esc(l.commentaire||getLocalComment(l.id))}</textarea><div class="comment-actions"><button class="btn secondary" id="dictationBtn" type="button" onclick="startCommentDictation()">🎙️ Dicter</button><button class="btn save-comment" type="button" onclick="saveLogementComment('${l.id}')">💾 Enregistrer le commentaire</button></div><div id="commentMsg" class="small"></div></div>
+    <div class="comment-box"><h3>📝 Commentaire</h3><textarea id="logementComment" placeholder="Écrire un commentaire ou utiliser la dictée vocale…">${esc(l.commentaire ?? getLocalComment(l.id))}</textarea><div class="comment-actions"><button class="btn secondary" id="dictationBtn" type="button" onclick="startCommentDictation()">🎙️ Dicter</button><button class="btn save-comment" type="button" onclick="saveLogementComment('${l.id}')">💾 Enregistrer le commentaire</button></div><div id="commentMsg" class="small"></div></div>
     <hr><h3>📄 Document PDF original</h3>
     ${mode==='admin'?`<label class="btn file-label">📄 ${pdf?'Remplacer le PDF':'Ajouter le PDF original'}<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadPdf('${l.id}',this.files[0])"></label>`:''}
     <div id="pdfMsg"></div>
