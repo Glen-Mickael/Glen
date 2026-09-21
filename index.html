@@ -729,7 +729,7 @@ async function openFillPdfFromCurrent(logementId){
   const {data:pdf}=await supabaseClient.from('pdf_documents').select('*').eq('logement_id',logementId).maybeSingle(); if(pdf)openFillPdf(pdf.id,logementId);
 }
 
-// ========================= QUITUS — CHAMPS MODIFIABLES V21 =========================
+// ========================= QUITUS — CHAMPS MODIFIABLES V22 =========================
 // Le PDF maître reste le fond graphique. Les champs GLEN_* sont des champs AcroForm
 // créés à exactement la position des zones modifiables du modèle Excel/PDF.
 // Ils ne sont jamais aplatis : l'export ZIP récupère donc un PDF toujours modifiable.
@@ -783,7 +783,7 @@ function quitusCurrentValue(name,type){
 }
 async function openFillPdf(pdfId,logementId){
   fillPdfId=pdfId; fillLogementId=logementId;
-  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <span class="small">V21</span></h2><p class="sig-note">Les champs et menus sont créés dans le PDF maître sans modifier sa mise en page. Le PDF exporté reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <span class="small">V22</span></h2><p class="sig-note">Les champs et menus sont créés dans le PDF maître sans modifier sa mise en page. Le PDF exporté reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
   try{
     const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single(); if(error||!pdf)throw error||new Error('PDF introuvable.');
     const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600); if(se)throw se;
@@ -873,9 +873,79 @@ async function saveFilledPdf(){
     msg.textContent='Erreur : '+(e?.message||e);
   }
 }
+async function migrateLegacyQuitusIfNeeded(pdf){
+  // Les anciennes versions V15-V20 ajoutaient des champs GLEN_* par-dessus le modèle.
+  // Si un ancien PDF est encore stocké, on le remplace automatiquement par le vrai
+  // modèle maître 0800M10002.pdf avant l'ouverture. Les champs du modèle sont conservés.
+  try{
+    const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);
+    if(se)throw se;
+    const r=await fetch(urlData.signedUrl); if(!r.ok)throw new Error('Lecture du PDF impossible.');
+    const oldBytes=await r.arrayBuffer();
+    const oldDoc=await PDFLib.PDFDocument.load(oldBytes,{updateFieldAppearances:false});
+    const oldFields=oldDoc.getForm().getFields();
+    const names=oldFields.map(f=>{try{return f.getName();}catch(e){return ''}});
+    const legacy=names.some(n=>n.startsWith('GLEN_')) || oldFields.length!==QUITUS_MASTER_FIELDS.length || oldDoc.getPages().length!==2;
+    if(!legacy)return false;
+
+    const oldForm=oldDoc.getForm();
+    const savedValues={};
+    for(const d of QUITUS_MASTER_FIELDS){
+      try{
+        const f=oldForm.getField(d.source||d.name);
+        if(d.type==='check') savedValues[d.name]={type:'check',value:!!f.isChecked()};
+        else if(d.type==='select') savedValues[d.name]={type:'select',value:(f.getSelected?.()||[])[0]||''};
+        else savedValues[d.name]={type:'text',value:f.getText?.()||''};
+      }catch(e){}
+    }
+
+    const raw=atob(GLEN_UNIVERSAL_QUITUS_B64);
+    const bytes=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+    const doc=await PDFLib.PDFDocument.load(bytes,{updateFieldAppearances:false});
+    ensureQuitusEditableFields(doc);
+    addUniversalHeaderFields(doc, window.__glenMigrationLogement || {});
+    const form=doc.getForm();
+    for(const d of QUITUS_MASTER_FIELDS){
+      const v=savedValues[d.name]; if(!v)continue;
+      try{
+        const f=form.getField(d.name);
+        if(v.type==='check'){v.value?f.check():f.uncheck();}
+        else if(v.type==='select' && v.value) f.select(v.value);
+        else if(v.type==='text') f.setText(v.value||'');
+      }catch(e){}
+    }
+    prepareQuitusPdfForExport(doc);
+    const saved=await doc.save({updateFieldAppearances:true,useObjectStreams:false});
+    const blob=new Blob([saved],{type:'application/pdf'});
+    const path=`${pdf.logement_id}/quitus-universel-${Date.now()}.pdf`;
+    const {error:ue}=await supabaseClient.storage.from('glen-documents').upload(path,blob,{contentType:'application/pdf',upsert:false});
+    if(ue)throw ue;
+    const {error:up}=await supabaseClient.from('pdf_documents').update({storage_path:path,original_filename:'Quitus universel.pdf'}).eq('id',pdf.id);
+    if(up){await supabaseClient.storage.from('glen-documents').remove([path]);throw up;}
+    await supabaseClient.storage.from('glen-documents').remove([pdf.storage_path]);
+    return true;
+  }catch(e){
+    console.error('Migration quitus legacy:',e);
+    return false;
+  }
+}
 async function openPdf(pdfId){
   const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single();
   if(error||!pdf){alert('PDF introuvable.');return;}
+  // Récupère le logement pour pouvoir réimprimer les renseignements sans créer de champs.
+  try{
+    const {data:l}=await supabaseClient.from('logements').select('*').eq('id',pdf.logement_id).single();
+    window.__glenMigrationLogement=l||{};
+  }catch(e){window.__glenMigrationLogement={};}
+  const migrated=await migrateLegacyQuitusIfNeeded(pdf);
+  if(migrated){
+    const {data:newPdf}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single();
+    if(!newPdf){alert('PDF migré mais introuvable.');return;}
+    const {data,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(newPdf.storage_path,3600);
+    if(se){alert(se.message);return;}
+    window.open(data.signedUrl,'_blank','noopener');
+    return;
+  }
   const {data,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);
   if(se){alert(se.message);return;}
   window.open(data.signedUrl,'_blank','noopener');
