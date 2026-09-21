@@ -678,7 +678,7 @@ function buildLogementReportHtml(l,comment,photos,quitusRows){
   <footer class="footer"><span>GLEN — Génie Climatique</span><span>Rapport d'intervention — ${escHtml(l.nom||'Logement')}</span></footer>
   </main><script>
 const EMBEDDED_QUITUS_DATA="${quitusData}";
-function openEmbeddedQuitus(){try{if(!EMBEDDED_QUITUS_DATA){alert("Quitus introuvable dans le rapport.");return;}const parts=EMBEDDED_QUITUS_DATA.split(",");const mime=(parts[0].match(/data:([^;]+)/)||[])[1]||"application/pdf";const raw=atob(parts.slice(1).join(","));const bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);const url=URL.createObjectURL(new Blob([bytes],{type:mime}));const w=window.open(url,"_blank");if(!w){const a=document.createElement("a");a.href=url;a.target="_blank";a.rel="noopener";a.click();}setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(e){alert("Impossible d’ouvrir le Quitus : "+e.message);}}
+function openEmbeddedQuitus(){try{if(!EMBEDDED_QUITUS_DATA){alert("Quitus introuvable dans le rapport.");return;}const a=document.createElement("a");a.href=EMBEDDED_QUITUS_DATA;a.target="_blank";a.rel="noopener noreferrer";a.download="";document.body.appendChild(a);a.click();a.remove();}catch(e){alert("Impossible d’ouvrir le Quitus : "+e.message);}}
 function openPackagedQuitus(){window.open("Quitus/${encodeURIComponent(l._quitusFileName||'Quitus.pdf')}","_blank");}
 <\/script></body></html>`;
 }
@@ -734,7 +734,7 @@ async function exportLogementDossier(logementId){
       }
     }
     const reportLogement={...l,_quitusFileName:quitusFileName,_quitusDataUrl:quitusDataUrl};
-    folder.file('Rapport logement.html',buildLogementReportHtml(reportLogement,comment,reportPhotos,quitusRows));
+    folder.file('Rapport d’intervention.html',buildLogementReportHtml(reportLogement,comment,reportPhotos,quitusRows));
     const infos=[`Nom / prénom : ${l.nom||''}`,`Adresse : ${l.adresse||''}`,`Code : ${l.code||''}`,`Commune : ${l.commune||''}`,`Téléphone : ${l.telephone||''}`,`Mail : ${l.mail||''}`,`N° Bat : ${l.num_bat||''}`,`N° Log : ${l.num_log||''}`,`Étage : ${l.etage||''}`,`Type : ${l.type||''}`,`Statut : ${l.statut||'À faire'}`,`Terminé le : ${l.termine_at?new Date(l.termine_at).toLocaleString('fr-FR'):''}`,`Commentaire :\n${comment||'Aucun commentaire.'}`].join('\n');
     folder.file('Informations logement.txt',infos);
     const blob=await zip.generateAsync({type:'blob'});
