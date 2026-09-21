@@ -350,11 +350,33 @@ async function manageAdmins(){
     <div class="item">
       <h3>👤 Administrateurs existants <span class="poseurs-count">${(admins||[]).length}</span></h3>
       <div class="poseurs-list">
-      ${(admins||[]).length ? (admins||[]).map(a=>`<div class="poseur-card"><div class="poseur-info"><div class="poseur-name">👤 ${esc(a.full_name||'Administrateur')}</div><div class="small">${esc(a.email||'')}</div></div></div>`).join('') : '<p class="small">Aucun administrateur pour le moment.</p>'}
+      ${(admins||[]).length ? (admins||[]).map(a=>`<div class="poseur-card"><div class="poseur-info"><div class="poseur-name">👤 ${esc(a.full_name||'Administrateur')}</div><div class="small">${esc(a.email||'')}</div></div><div class="row" style="margin-left:auto">${a.id===currentProfile?.id?'<span class="small" style="padding:8px 10px">Compte actuel</span>':`<button class="btn danger" onclick="deleteAdmin('${a.id}',${JSON.stringify(a.email||'').replace(/'/g,"&#39;")})">🗑️ Supprimer</button>`}</div></div>`).join('') : '<p class="small">Aucun administrateur pour le moment.</p>'}
       </div>
     </div>
     <div class="item" style="background:#fff8e6"><b>🔐 Sécurité</b><p class="small">La création est effectuée côté serveur par Supabase. La clé secrète d'administration n'est jamais envoyée au navigateur.</p></div>
   </div>`;
+}
+
+async function deleteAdmin(adminId, email){
+  if(!adminId) return;
+  if(currentProfile?.id===adminId){
+    alert('Vous ne pouvez pas supprimer le compte administrateur actuellement connecté.');
+    return;
+  }
+  const label=email||'cet administrateur';
+  if(!confirm(`Voulez-vous vraiment supprimer ${label} ?\n\nLe compte administrateur sera supprimé, mais les chantiers, logements, photos, Quitus et documents ne seront pas supprimés.`)) return;
+
+  const {data,error}=await supabaseClient.functions.invoke('delete-admin',{body:{userId:adminId}});
+  if(error){
+    alert('Erreur lors de la suppression : '+(error.message||'Erreur inconnue.'));
+    return;
+  }
+  if(!data?.ok){
+    alert('Suppression impossible : '+(data?.error||'Erreur inconnue.'));
+    return;
+  }
+  alert('Administrateur supprimé.');
+  await manageAdmins();
 }
 
 async function createAdmin(){
