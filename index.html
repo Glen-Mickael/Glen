@@ -809,10 +809,6 @@ function closeFillPdf(){document.getElementById('fillModal')?.remove();fillPdfId
 async function saveFilledPdf(){
   const msg=document.getElementById('fillMsg'); if(!fillForm||!fillPdfId)return;
 
-  // Ouvre une fenêtre immédiatement au clic pour éviter le blocage des pop-up
-  // lorsque le PDF sera disponible après l'enregistrement.
-  let pdfWindow=null;
-  try{ pdfWindow=window.open('about:blank','_blank'); }catch(e){}
 
   msg.className='small';msg.textContent='Enregistrement du PDF…';
   try{
@@ -851,24 +847,11 @@ async function saveFilledPdf(){
 
     await supabaseClient.storage.from('glen-documents').remove([pdf.storage_path]);
 
-    // Génère le lien du PDF nouvellement enregistré puis l'ouvre automatiquement.
-    const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(path,3600);
-    if(se||!urlData?.signedUrl)throw se||new Error('Impossible d’ouvrir le PDF enregistré.');
-
-    msg.className='ok';
-    msg.textContent='PDF enregistré. Ouverture du PDF…';
-
-    if(pdfWindow && !pdfWindow.closed){
-      pdfWindow.location.href=urlData.signedUrl;
-    }else{
-      // Secours si le navigateur a bloqué la nouvelle fenêtre.
-      const a=document.createElement('a');
-      a.href=urlData.signedUrl;
-      a.target='_blank';
-      a.rel='noopener';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+   // Le PDF est enregistré dans Supabase.
+// On n'ouvre pas automatiquement un nouvel onglet afin d'éviter
+// l'ouverture d'une page blanche après l'enregistrement.
+msg.className='ok';
+msg.textContent='PDF enregistré avec succès. Vous pouvez fermer cette fenêtre.';
     }
 
     setTimeout(()=>{closeFillPdf();},700);
