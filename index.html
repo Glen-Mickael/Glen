@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#203a5d">
-<title>GLEN V8.9 — V32 corrigé</title>
+<title>GLEN V8.9 — V33</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
@@ -773,7 +773,7 @@ function ensureQuitusEditableFields(doc){
 
 let fillPdfId=null,fillLogementId=null,fillDoc=null,fillForm=null;
 
-// V32 : fonction nécessaire au pré-remplissage de la fenêtre
+// V33 : fonction nécessaire au pré-remplissage de la fenêtre
 // « Remplir le PDF ». Elle avait été supprimée par erreur dans V30.
 function quitusCurrentValue(name,type){
   try{
@@ -788,7 +788,7 @@ function quitusCurrentValue(name,type){
 
 async function openFillPdf(pdfId,logementId){
   fillPdfId=pdfId; fillLogementId=logementId;
-  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <span class="small">V32</span></h2><p class="sig-note">Les champs du modèle maître sont conservés à leur emplacement d'origine. Le PDF exporté reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <span class="small">V33</span></h2><p class="sig-note">Les champs du modèle maître sont conservés à leur emplacement d'origine. Le PDF exporté reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
   try{
     const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single(); if(error||!pdf)throw error||new Error('PDF introuvable.');
     const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600); if(se)throw se;
@@ -878,6 +878,44 @@ async function saveFilledPdf(){
     msg.textContent='Erreur : '+(e?.message||e);
   }
 }
+function quitusGeometryMatchesMaster(doc){
+  try{
+    if(doc.getPages().length!==2) return false;
+    const form=doc.getForm();
+    const fields=form.getFields();
+    if(fields.length!==106) return false;
+
+    const byName=new Map();
+    for(const f of fields){
+      const n=String(f.getName?.()||'');
+      if(n) byName.set(n,f);
+      if(n.startsWith('GLEN_')) return false;
+    }
+
+    for(const d of QUITUS_MASTER_FIELDS){
+      const f=byName.get(String(d.source||d.name));
+      if(!f) return false;
+      const widgets=f.acroField?.getWidgets?.()||[];
+      if(!widgets.length) return false;
+      const r=widgets[0].getRectangle?.();
+      if(!r) return false;
+
+      const eps=0.15;
+      if(Math.abs(r.x-d.x)>eps ||
+         Math.abs(r.y-d.y)>eps ||
+         Math.abs(r.width-d.w)>eps ||
+         Math.abs(r.height-d.h)>eps){
+        console.warn('Géométrie quitus incorrecte :',d.name,r,d);
+        return false;
+      }
+    }
+    return true;
+  }catch(e){
+    console.warn('Contrôle géométrie quitus :',e);
+    return false;
+  }
+}
+
 async function migrateLegacyQuitusIfNeeded(pdf){
   try{
     const {data:urlData,error:se}=await supabaseClient.storage
@@ -890,22 +928,16 @@ async function migrateLegacyQuitusIfNeeded(pdf){
     let isMaster=false;
     try{
       const oldDoc=await PDFLib.PDFDocument.load(oldBytes,{updateFieldAppearances:false});
-      const fields=oldDoc.getForm().getFields();
-      const names=fields.map(f=>{try{return f.getName()}catch(e){return ''}});
-      isMaster =
-        oldDoc.getPages().length===2 &&
-        fields.length===106 &&
-        names.includes('B13') &&
-        names.includes('date_travaux') &&
-        !names.some(n=>String(n).startsWith('GLEN_'));
+      isMaster=quitusGeometryMatchesMaster(oldDoc);
     }catch(e){
       isMaster=false;
     }
 
     if(isMaster) return false;
 
-    // V31: copie binaire exacte du PDF maître.
-    // Aucun embedFont, aucun drawText, aucun load/save du maître.
+    // V33 : si le PDF enregistré n'est pas exactement conforme au maître
+    // (nombre de champs, noms OU coordonnées des widgets), on le remplace
+    // par une copie binaire exacte du PDF maître.
     const raw=atob(GLEN_UNIVERSAL_QUITUS_B64);
     const masterBytes=new Uint8Array(raw.length);
     for(let i=0;i<raw.length;i++) masterBytes[i]=raw.charCodeAt(i);
@@ -928,7 +960,7 @@ async function migrateLegacyQuitusIfNeeded(pdf){
     await supabaseClient.storage.from('glen-documents').remove([pdf.storage_path]);
     return true;
   }catch(e){
-    console.error('Migration quitus V31:',e);
+    console.error('Migration quitus V33:',e);
     alert('Erreur lors du remplacement du quitus : '+(e?.message||e));
     return false;
   }
