@@ -459,7 +459,7 @@ async function openLogement(id,mode='poseur'){
     <hr><h3>📄 Document PDF original</h3>
     ${mode==='admin'?`<label class="btn file-label">📄 ${pdf?'Remplacer le PDF':'Ajouter le PDF original'}<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadPdf('${l.id}',this.files[0])"></label>`:''}
     <div id="pdfMsg"></div>
-    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="${mode==='poseur'?'openPdfPoseur(\'${pdf.id}\')':'openPdf(\'${pdf.id}\')'}">📄 Ouvrir le PDF</button>${mode==='admin'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir / Enregistrer</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Entreprise</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Locataire</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:mode==='poseur'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir le PDF</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Signer locataire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Signer entreprise</button>`:''}</div></div>`:isDemoChantierName(window.currentOpenChantierName)?'<button class="btn" onclick="createUniversalQuitus(\'${l.id}\')">📄 Créer le quitus universel</button><p class="small">Version de test : disponible uniquement sur le chantier DEMO.</p>':'<p class="small">Aucun PDF associé à ce logement.</p>'}
+    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div><div class="row" style="margin-top:10px"><button class="btn" onclick="${mode==='poseur'?'openPdfPoseur(\'${pdf.id}\')':'openPdf(\'${pdf.id}\')'}">📄 Quitus</button>${mode==='admin'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir le Quitus</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Entreprise</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Locataire</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:mode==='poseur'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir le Quitus</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Signer locataire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Signer entreprise</button>`:''}</div></div>`:isDemoChantierName(window.currentOpenChantierName)?'<button class="btn" onclick="createUniversalQuitus(\'${l.id}\')">📄 Créer le quitus universel</button><p class="small">Version de test : disponible uniquement sur le chantier DEMO.</p>':'<p class="small">Aucun PDF associé à ce logement.</p>'}
     <p class="small">Le fichier est conservé comme PDF original, sans modification ni changement de mise en page.</p>
     <hr><h3>Photos</h3>
     ${mode==='poseur'?`<div class="row">
@@ -998,10 +998,12 @@ async function openPdfPoseur(pdfId){
   try{
     const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single();
     if(error||!pdf){alert('PDF introuvable.');return;}
+    if(!pdf.storage_path){alert('Le Quitus est enregistré mais son fichier PDF est introuvable dans le stockage.');return;}
     const {data:u,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600);
-    if(se||!u?.signedUrl){alert('Impossible d’ouvrir le PDF : '+(se?.message||'lien indisponible'));return;}
-    const opened=window.open(u.signedUrl,'_blank','noopener,noreferrer');
-    if(!opened) window.location.href=u.signedUrl;
+    if(se||!u?.signedUrl){alert('Impossible d’ouvrir le Quitus : '+(se?.message||'fichier PDF introuvable dans le stockage'));return;}
+    const a=document.createElement('a');
+    a.href=u.signedUrl; a.target='_blank'; a.rel='noopener noreferrer';
+    a.style.display='none'; document.body.appendChild(a); a.click(); a.remove();
   }catch(e){
     alert('Impossible d’ouvrir le PDF : '+(e?.message||e));
   }
