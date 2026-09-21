@@ -165,18 +165,74 @@ function getLocalComment(logementId){
 function setLocalComment(logementId,value){
   try{localStorage.setItem('glen_commentaire_'+logementId,value||'');}catch(e){}
 }
+let commentDictationState = { active:false, recognition:null, restartTimer:null };
+
 function startCommentDictation(){
   const ta=document.getElementById('logementComment');
   const btn=document.getElementById('dictationBtn');
   if(!ta)return;
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){alert('La dictée vocale n’est pas disponible sur ce navigateur. Utilise Chrome/Edge et autorise le microphone.');return;}
-  const rec=new SR(); rec.lang='fr-FR'; rec.interimResults=false; rec.continuous=false;
-  if(btn){btn.disabled=true;btn.textContent='🎙️ Écoute…';}
-  rec.onresult=e=>{const t=e.results?.[0]?.[0]?.transcript||''; ta.value=(ta.value.trim()?ta.value.trim()+' ':'')+t;};
-  rec.onerror=e=>alert('Dictée vocale : '+(e.error||'erreur'));
-  rec.onend=()=>{if(btn){btn.disabled=false;btn.textContent='🎙️ Dicter';}};
-  rec.start();
+
+  // Un clic démarre la dictée, un second clic l’arrête.
+  // La reconnaissance est relancée automatiquement si le navigateur la coupe.
+  if(commentDictationState.active){
+    commentDictationState.active=false;
+    clearTimeout(commentDictationState.restartTimer);
+    try{ commentDictationState.recognition?.stop(); }catch(e){}
+    if(btn){btn.disabled=false;btn.textContent='🎙️ Dicter';}
+    return;
+  }
+
+  commentDictationState.active=true;
+  if(btn){btn.disabled=false;btn.textContent='⏹️ Arrêter la dictée';}
+
+  const startRecognition=()=>{
+    if(!commentDictationState.active)return;
+    const rec=new SR();
+    commentDictationState.recognition=rec;
+    rec.lang='fr-FR';
+    rec.interimResults=false;
+    rec.continuous=true;
+
+    rec.onresult=e=>{
+      let parts=[];
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        if(e.results[i].isFinal){
+          const t=(e.results[i][0]?.transcript||'').trim();
+          if(t)parts.push(t);
+        }
+      }
+      if(parts.length){
+        const current=ta.value.trim();
+        ta.value=(current?current+' ':'')+parts.join(' ');
+        ta.dispatchEvent(new Event('input',{bubbles:true}));
+      }
+    };
+
+    rec.onerror=e=>{
+      // Ne pas arrêter la dictée pour une coupure réseau ou temporaire.
+      if(e.error==='not-allowed'||e.error==='service-not-allowed'){
+        commentDictationState.active=false;
+        if(btn){btn.textContent='🎙️ Dicter';}
+        alert('Le microphone n’est pas autorisé. Autorise le microphone pour ce site puis réessaie.');
+      }
+    };
+
+    rec.onend=()=>{
+      if(!commentDictationState.active)return;
+      // Certains navigateurs mobiles arrêtent SpeechRecognition après quelques secondes.
+      // On relance automatiquement tant que l'utilisateur n'a pas cliqué sur Arrêter.
+      commentDictationState.restartTimer=setTimeout(startRecognition,250);
+    };
+
+    try{rec.start();}
+    catch(e){
+      commentDictationState.restartTimer=setTimeout(startRecognition,500);
+    }
+  };
+
+  startRecognition();
 }
 async function saveLogementComment(logementId){
   const ta=document.getElementById('logementComment');
