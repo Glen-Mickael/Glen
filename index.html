@@ -628,7 +628,8 @@ async function applySignature(){
       entreprise:{x:289,y:88,width:288,height:155}
     };
     page.drawImage(png,{...boxes[signatureRole]||boxes.entreprise,opacity:1});
-    const signed=await doc.save({updateFieldAppearances:false});
+    prepareQuitusPdfForExport(doc);
+    const signed=await doc.save({updateFieldAppearances:true,useObjectStreams:false});
     const signedPath=`${signatureLogementId}/signed-${Date.now()}-${pdf.original_filename.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
     const blob=new Blob([signed],{type:'application/pdf'});
     const {error:ue}=await supabaseClient.storage.from('glen-documents').upload(signedPath,blob,{contentType:'application/pdf',upsert:false}); if(ue)throw ue;
@@ -683,6 +684,7 @@ async function createUniversalQuitus(logementId){
     let doc=await PDFLib.PDFDocument.load(bytes,{updateFieldAppearances:false});
     addUniversalHeaderFields(doc,l);
     ensureQuitusEditableFields(doc);
+    prepareQuitusPdfForExport(doc);
     const saved=await doc.save({useObjectStreams:false,updateFieldAppearances:true});
     const blob=new Blob([saved],{type:'application/pdf'});
     const path=`${logementId}/quitus-universel-${Date.now()}.pdf`;
@@ -700,6 +702,27 @@ function addTextField(page,form,name,x,y,w,h,value=''){
   if(form.getFields().some(f=>f.getName()===name))return;
   const f=form.createTextField(name); f.setText(String(value??'')); f.addToPage(page,{x,y,width:w,height:h,borderWidth:0,textColor:PDFLib.rgb(0.05,0.05,0.05),fontSize:8});
 }
+
+function prepareQuitusPdfForExport(doc){
+  // Compatibilité Acrobat / Edge / Chrome : on conserve TOUS les champs
+  // AcroForm et on demande au lecteur PDF de les considérer comme éditables.
+  const form=doc.getForm();
+  try{
+    for(const f of form.getFields()){
+      try{ f.disableReadOnly?.(); }catch(e){}
+      try{ f.enableEditing?.(); }catch(e){}
+    }
+  }catch(e){}
+  try{ form.updateFieldAppearances(); }catch(e){}
+  try{
+    const acroForm=doc.catalog.lookup(PDFLib.PDFName.of('AcroForm'));
+    if(acroForm){
+      acroForm.set(PDFLib.PDFName.of('NeedAppearances'),PDFLib.PDFBool.True);
+      acroForm.delete?.(PDFLib.PDFName.of('XFA'));
+    }
+  }catch(e){}
+  return doc;
+}
 function addUniversalHeaderFields(doc,l){
   const page=doc.getPages()[0],form=doc.getForm();
   addTextField(page,form,'GLEN_MaitreOuvrage',40,751,245,17,''); addTextField(page,form,'GLEN_Region',306,751,245,17,'');
@@ -712,7 +735,7 @@ async function openFillPdfFromCurrent(logementId){
   const {data:pdf}=await supabaseClient.from('pdf_documents').select('*').eq('logement_id',logementId).maybeSingle(); if(pdf)openFillPdf(pdf.id,logementId);
 }
 
-// ========================= QUITUS — CHAMPS MODIFIABLES V17 =========================
+// ========================= QUITUS — CHAMPS MODIFIABLES V18 =========================
 // Le PDF maître reste le fond graphique. Les champs GLEN_* sont des champs AcroForm
 // créés à exactement la position des zones modifiables du modèle Excel/PDF.
 // Ils ne sont jamais aplatis : l'export ZIP récupère donc un PDF toujours modifiable.
@@ -762,7 +785,7 @@ function quitusCurrentValue(name,type){
 }
 async function openFillPdf(pdfId,logementId){
   fillPdfId=pdfId; fillLogementId=logementId;
-  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <span class="small">V17</span></h2><p class="sig-note">Les champs et menus sont créés dans le PDF maître sans modifier sa mise en page. Le PDF exporté reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <span class="small">V18</span></h2><p class="sig-note">Les champs et menus sont créés dans le PDF maître sans modifier sa mise en page. Le PDF exporté reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
   try{
     const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single(); if(error||!pdf)throw error||new Error('PDF introuvable.');
     const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600); if(se)throw se;
@@ -810,6 +833,7 @@ async function saveFilledPdf(){
     });
 
     // Conserve les champs du PDF original et les signatures déjà présentes.
+    prepareQuitusPdfForExport(fillDoc);
     const saved=await fillDoc.save({updateFieldAppearances:true,useObjectStreams:false});
     const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',fillPdfId).single();
     if(error||!pdf)throw error||new Error('PDF introuvable.');
