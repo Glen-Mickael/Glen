@@ -698,9 +698,11 @@ async function createUniversalQuitus(logementId){
     setTimeout(()=>openFillPdfFromCurrent(logementId),250);
   }catch(e){alert('Erreur création quitus : '+(e?.message||e));}
 }
-function addTextField(page,form,name,x,y,w,h,value=''){
-  if(form.getFields().some(f=>f.getName()===name))return;
-  const f=form.createTextField(name); f.setText(String(value??'')); f.addToPage(page,{x,y,width:w,height:h,borderWidth:0,textColor:PDFLib.rgb(0.05,0.05,0.05),fontSize:8});
+function drawGlenHeaderText(page,text,x,y,w,h){
+  const v=String(text??'').trim();
+  if(!v)return;
+  const font=PDFLib.StandardFonts?.Helvetica;
+  page.drawText(v,{x:x+2,y:y+4,maxWidth:w-4,size:8,font:font?undefined:undefined,color:PDFLib.rgb(0.12,0.12,0.12)});
 }
 
 function prepareQuitusPdfForExport(doc){
@@ -724,18 +726,31 @@ function prepareQuitusPdfForExport(doc){
   return doc;
 }
 function addUniversalHeaderFields(doc,l){
-  const page=doc.getPages()[0],form=doc.getForm();
-  addTextField(page,form,'GLEN_MaitreOuvrage',40,751,245,17,''); addTextField(page,form,'GLEN_Region',306,751,245,17,'');
-  addTextField(page,form,'GLEN_NumProgramme',40,704,245,17,''); addTextField(page,form,'GLEN_NumLot',306,704,245,17,'');
-  addTextField(page,form,'GLEN_NomLocataire',40,638,245,17,l.nom||''); addTextField(page,form,'GLEN_Typologie',306,638,245,17,l.type||'');
-  addTextField(page,form,'GLEN_Adresse',40,591,245,17,l.adresse||''); addTextField(page,form,'GLEN_NumLogement',306,591,245,17,l.num_log||'');
-  addTextField(page,form,'GLEN_Ville',40,568,245,17,l.commune||''); addTextField(page,form,'GLEN_IdLogement',306,568,245,17,l.id||'');
+  // Les renseignements marché/logement sont imprimés comme texte simple :
+  // pas de widget AcroForm, donc pas de surbrillance bleue et pas de décalage.
+  const page=doc.getPages()[0];
+  const vals={
+    maitre:l?.maitre_ouvrage||l?.maitreOuvrage||'',
+    region:l?.region||'', programme:l?.num_programme||l?.programme||'', lot:l?.num_lot||l?.lot||'',
+    nom:l?.nom||'', typologie:l?.type||'', adresse:l?.adresse||'', numlog:l?.num_log||'',
+    ville:l?.commune||'', id:l?.id||''
+  };
+  drawGlenHeaderText(page,vals.maitre,40,751,245,17);
+  drawGlenHeaderText(page,vals.region,306,751,245,17);
+  drawGlenHeaderText(page,vals.programme,40,704,245,17);
+  drawGlenHeaderText(page,vals.lot,306,704,245,17);
+  drawGlenHeaderText(page,vals.nom,40,638,245,17);
+  drawGlenHeaderText(page,vals.typologie,306,638,245,17);
+  drawGlenHeaderText(page,vals.adresse,40,591,245,17);
+  drawGlenHeaderText(page,vals.numlog,306,591,245,17);
+  drawGlenHeaderText(page,vals.ville,40,568,245,17);
+  drawGlenHeaderText(page,vals.id,306,568,245,17);
 }
 async function openFillPdfFromCurrent(logementId){
   const {data:pdf}=await supabaseClient.from('pdf_documents').select('*').eq('logement_id',logementId).maybeSingle(); if(pdf)openFillPdf(pdf.id,logementId);
 }
 
-// ========================= QUITUS — CHAMPS MODIFIABLES V18 =========================
+// ========================= QUITUS — CHAMPS MODIFIABLES V19 =========================
 // Le PDF maître reste le fond graphique. Les champs GLEN_* sont des champs AcroForm
 // créés à exactement la position des zones modifiables du modèle Excel/PDF.
 // Ils ne sont jamais aplatis : l'export ZIP récupère donc un PDF toujours modifiable.
@@ -752,7 +767,7 @@ function addGlenTextField(page,form,name,x,y,w,h,value=''){
   let f; try{f=form.getField(name);}catch(e){f=null;}
   if(f)return f;
   f=form.createTextField(name); f.setText(String(value??''));
-  f.addToPage(page,{x,y,width:w,height:h,borderWidth:0,fontSize:8,textColor:PDFLib.rgb(0.05,0.05,0.05)});
+  f.addToPage(page,{x,y,width:w,height:h,borderWidth:0,fontSize:7.5,textColor:PDFLib.rgb(0.05,0.05,0.05)});
   return f;
 }
 function ensureQuitusEditableFields(doc){
@@ -763,11 +778,11 @@ function ensureQuitusEditableFields(doc){
     if(f)continue;
     if(d.type==='select'){
       f=form.createDropdown(d.name); f.addOptions((d.options||['\u00a0']).map(String));
-      f.addToPage(page,{x:d.x,y:d.y,width:d.w,height:d.h,borderWidth:0,fontSize:8,textColor:PDFLib.rgb(0.05,0.05,0.05)});
+      f.addToPage(page,{x:d.x,y:d.y,width:d.w,height:d.h,borderWidth:0,fontSize:7.5,textColor:PDFLib.rgb(0.05,0.05,0.05)});
     }else if(d.type==='check'){
       f=form.createCheckBox(d.name); f.addToPage(page,{x:d.x,y:d.y,width:d.w,height:d.h,borderWidth:0});
     }else{
-      f=form.createTextField(d.name); f.addToPage(page,{x:d.x,y:d.y,width:d.w,height:d.h,borderWidth:0,fontSize:8,textColor:PDFLib.rgb(0.05,0.05,0.05)});
+      f=form.createTextField(d.name); f.addToPage(page,{x:d.x,y:d.y,width:d.w,height:d.h,borderWidth:0,fontSize:7.5,textColor:PDFLib.rgb(0.05,0.05,0.05)});
     }
   }
   return form;
@@ -785,7 +800,7 @@ function quitusCurrentValue(name,type){
 }
 async function openFillPdf(pdfId,logementId){
   fillPdfId=pdfId; fillLogementId=logementId;
-  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <span class="small">V18</span></h2><p class="sig-note">Les champs et menus sont créés dans le PDF maître sans modifier sa mise en page. Le PDF exporté reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <span class="small">V19</span></h2><p class="sig-note">Les champs et menus sont créés dans le PDF maître sans modifier sa mise en page. Le PDF exporté reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
   try{
     const {data:pdf,error}=await supabaseClient.from('pdf_documents').select('*').eq('id',pdfId).single(); if(error||!pdf)throw error||new Error('PDF introuvable.');
     const {data:urlData,error:se}=await supabaseClient.storage.from('glen-documents').createSignedUrl(pdf.storage_path,3600); if(se)throw se;
@@ -793,10 +808,7 @@ async function openFillPdf(pdfId,logementId){
     const bytes=await response.arrayBuffer(); fillDoc=await PDFLib.PDFDocument.load(bytes,{updateFieldAppearances:false}); fillForm=fillDoc.getForm();
     const {data:l}=await supabaseClient.from('logements').select('*').eq('id',logementId).single();
     addUniversalHeaderFields(fillDoc,l||{}); ensureQuitusEditableFields(fillDoc);
-    const headerDefaults={GLEN_NomLocataire:l?.nom||'',GLEN_Typologie:l?.type||'',GLEN_Adresse:l?.adresse||'',GLEN_NumLogement:l?.num_log||'',GLEN_Ville:l?.commune||'',GLEN_IdLogement:l?.id||''};
-    for(const [k,v] of Object.entries(headerDefaults)){try{fillForm.getField(k).setText(v);}catch(e){}}
     const fields=[
-      ...QUITUS_HEADER_FIELDS.map(([name,label])=>({name,label,chapter:2,type:'text',value:quitusCurrentValue(name,'text')})),
       ...QUITUS_MASTER_FIELDS.map(d=>({name:d.name,label:d.label,chapter:d.chapter,type:d.type,value:quitusCurrentValue(d.name,d.type),options:d.options||[]}))
     ];
     const wrap=document.getElementById('fillFields'); const chapters={}; fields.forEach(x=>(chapters[x.chapter]??=[]).push(x));
