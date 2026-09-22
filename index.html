@@ -661,7 +661,7 @@ async function openLogement(id,mode='poseur'){
     <hr><h3>📄 Document PDF original</h3>
     ${mode==='admin'?`<label class="btn file-label">📄 ${pdf?'Remplacer le PDF':'Ajouter le PDF original'}<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadPdf('${l.id}',this.files[0])"></label>`:''}
     <div id="pdfMsg"></div>
-    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div>${mode==='admin' && (pdf.signature_entreprise_at || pdf.signature_locataire_at) ? `<div class="small" style="margin-top:8px;line-height:1.6">${pdf.signature_entreprise_at?`<div>✅ <b>Entreprise signée</b> le ${new Date(pdf.signature_entreprise_at).toLocaleString('fr-FR')}</div>`:''}${pdf.signature_locataire_at?`<div>✅ <b>Locataire signé</b> le ${new Date(pdf.signature_locataire_at).toLocaleString('fr-FR')}</div>`:''}</div>` : ''}<div class="row" style="margin-top:10px"><button class="btn" onclick="${mode==='poseur'?`openPdfPoseur('${pdf.id}','${encodeURIComponent(pdf.storage_path||'')}')`:`openPdf('${pdf.id}')`}">📄 Quitus</button>${mode==='admin'?`<button type="button" class="btn" onclick="window.openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir le Quitus</button><button type="button" class="btn" onclick="window.openSignature('${pdf.id}','${l.id}','entreprise')">✍️ ${pdf?.signature_entreprise_at?'Entreprise signée':'Entreprise'}</button><button type="button" class="btn" onclick="window.openSignature('${pdf.id}','${l.id}','locataire')">✍️ ${pdf?.signature_locataire_at?'Locataire signé':'Locataire'}</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:mode==='poseur'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir le Quitus</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Signer locataire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Signer entreprise</button>`:''}</div></div>`:isDemoChantierName(window.currentOpenChantierName)?'<button class="btn" onclick="createUniversalQuitus(\'${l.id}\')">📄 Créer le quitus universel</button><p class="small">Version de test : disponible uniquement sur le chantier DEMO.</p>':'<p class="small">Aucun PDF associé à ce logement.</p>'}
+    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div>${mode==='admin' && (pdf.signature_entreprise_at || pdf.signature_locataire_at) ? `<div class="small" style="margin-top:8px;line-height:1.6">${pdf.signature_entreprise_at?`<div>✅ <b>Entreprise signée</b> le ${new Date(pdf.signature_entreprise_at).toLocaleString('fr-FR')}</div>`:''}${pdf.signature_locataire_at?`<div>✅ <b>Locataire signé</b> le ${new Date(pdf.signature_locataire_at).toLocaleString('fr-FR')}</div>`:''}</div>` : ''}<div class="row" style="margin-top:10px"><button class="btn" onclick="${mode==='poseur'?`openPdfPoseur('${pdf.id}','${encodeURIComponent(pdf.storage_path||'')}')`:`openPdf('${pdf.id}')`}">📄 Quitus</button>${mode==='admin'?`<button type="button" class="btn" data-glen-action="fill-quitus" data-pdf-id="${pdf.id}" data-logement-id="${l.id}">✏️ Remplir le Quitus</button><button type="button" class="btn" data-glen-action="sign" data-pdf-id="${pdf.id}" data-logement-id="${l.id}" data-role="entreprise">✍️ ${pdf?.signature_entreprise_at?'Entreprise signée':'Entreprise'}</button><button type="button" class="btn" data-glen-action="sign" data-pdf-id="${pdf.id}" data-logement-id="${l.id}" data-role="locataire">✍️ ${pdf?.signature_locataire_at?'Locataire signé':'Locataire'}</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:mode==='poseur'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir le Quitus</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Signer locataire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Signer entreprise</button>`:''}</div></div>`:isDemoChantierName(window.currentOpenChantierName)?'<button class="btn" onclick="createUniversalQuitus(\'${l.id}\')">📄 Créer le quitus universel</button><p class="small">Version de test : disponible uniquement sur le chantier DEMO.</p>':'<p class="small">Aucun PDF associé à ce logement.</p>'}
     <p class="small">Le fichier est conservé comme PDF original, sans modification ni changement de mise en page.</p>
     <hr><h3>Photos</h3>
     ${mode==='poseur'?`<div class="row">
@@ -880,6 +880,34 @@ async function uploadPdf(logementId,file){
   }catch(e){if(msg){msg.className='error';msg.textContent='Erreur : '+e.message;}}
 }
 let signatureCanvas=null, signatureCtx=null, signatureDrawing=false, signatureLast=null, signaturePdfId=null, signatureLogementId=null, signatureRole=null;
+
+// V61 : les 3 boutons ADMIN Quitus utilisent un gestionnaire de clic centralisé.
+// Cela évite toute dépendance à l'attribut onclick dans le HTML généré.
+if(!window.__glenAdminPdfButtonsBound){
+  window.__glenAdminPdfButtonsBound=true;
+  document.addEventListener('click',function(e){
+    const b=e.target.closest?.('[data-glen-action]');
+    if(!b)return;
+    e.preventDefault();
+    e.stopPropagation();
+    const action=b.dataset.glenAction;
+    const pdfId=b.dataset.pdfId;
+    const logementId=b.dataset.logementId;
+    try{
+      if(action==='fill-quitus'){
+        if(typeof window.openFillPdf!=='function') throw new Error('Fonction Remplir le Quitus indisponible.');
+        window.openFillPdf(pdfId,logementId);
+      }else if(action==='sign'){
+        if(typeof window.openSignature!=='function') throw new Error('Fonction Signature indisponible.');
+        window.openSignature(pdfId,logementId,b.dataset.role);
+      }
+    }catch(err){
+      console.error('GLEN bouton PDF ADMIN:',err);
+      alert('Erreur ouverture : '+(err?.message||err));
+    }
+  },true);
+}
+
 window.openSignature = function openSignature(pdfId,logementId,role='entreprise'){
   signaturePdfId=pdfId; signatureLogementId=logementId; signatureRole=(role==='locataire'||role==='entreprise')?role:'entreprise';
   const labels={entreprise:'Entreprise',locataire:'Locataire'};
