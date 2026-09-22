@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="GLEN">
 
 <meta name="theme-color" content="#203a5d">
-<title>GLEN — V62 correction fenêtres Admin</title>
+<title>GLEN — V65 Chargés d’affaire</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
@@ -121,6 +121,7 @@ hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
   .poseur-delete-one{margin-left:auto}
 }
 </style>
+<style>.ca-permissions-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px;margin:10px 0 14px}.ca-permissions-grid .checkbox-field{margin:0}@media(max-width:650px){.ca-permissions-grid{grid-template-columns:1fr}}</style>
 </head>
 <body>
 <header><h1>GLEN</h1><p>Gestion des chantiers et logements</p></header>
@@ -136,7 +137,11 @@ const SUPABASE_URL = "https://vmhqbywplgahrxozroit.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KQHZK6sX5B4OHDo7UYHu1Q_iKsKsSf2";
 
 const app = document.getElementById("app");
-let supabaseClient = null, currentProfile = null;
+let supabaseClient = null, currentProfile = null, currentPermissions = {};
+
+function isChargeAffaire(){return currentProfile?.role==='charge_affaire';}
+function hasPermission(name){return currentProfile?.role==='admin' || (isChargeAffaire() && currentPermissions?.[name]===true);}
+function requirePermission(name,label='Cette action'){if(hasPermission(name))return true;alert(label+" n’est pas autorisée pour ce compte.");return false;}
 
 function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
 function set(msg, cls=""){app.innerHTML=`<div class="card ${cls}">${msg}</div>`;}
@@ -244,6 +249,7 @@ function startCommentDictation(){
   startRecognition();
 }
 async function saveLogementComment(logementId){
+  if(currentProfile?.role==='charge_affaire' && !requirePermission('manage_comments','La gestion des commentaires')) return;
   const ta=document.getElementById('logementComment');
   const msg=document.getElementById('commentMsg');
   const value=ta?.value?.trim()||'';
@@ -286,10 +292,17 @@ async function login(){
 async function logout(){await supabaseClient.auth.signOut();currentProfile=null;loginView();}
 
 async function loadProfile(){
-  const {data,error}=await supabaseClient.from("profiles").select("*").eq("id",(await supabaseClient.auth.getUser()).data.user.id).single();
+  const user=(await supabaseClient.auth.getUser()).data.user;
+  const {data,error}=await supabaseClient.from("profiles").select("*").eq("id",user.id).single();
   if(error){set("Profil introuvable. Vérifie que le compte existe dans Supabase et qu'il a bien une ligne dans profiles.","error");return;}
-  currentProfile=data;
-  currentProfile.role==="admin" ? adminHome() : poseurHome();
+  currentProfile=data; currentPermissions={};
+  if(currentProfile.role==='charge_affaire'){
+    const {data:perm, error:pe}=await supabaseClient.from('charge_affaire_permissions').select('*').eq('profile_id',user.id).maybeSingle();
+    if(pe){set('Erreur chargement des droits : '+esc(pe.message),'error');return;}
+    currentPermissions=perm||{};
+    return chargeAffaireHome();
+  }
+  return currentProfile.role==='admin' ? adminHome() : poseurHome();
 }
 
 async function adminHome(){
@@ -313,7 +326,7 @@ async function adminHome(){
   </div>
   <div class="progress-stats"><div><b>${(chantiers||[]).length}</b><span>🏗️ Chantiers</span></div><div><b>${totalAll}</b><span>🏠 Logements</span></div><div><b>${doneAll}</b><span>✅ Terminés</span></div><div><b>${todoAll}</b><span>⏳ À faire</span></div></div>
   <div class="item" style="margin-bottom:16px"><div class="row" style="justify-content:space-between"><b>Avancement global</b><b>${pctAll}%</b></div><div style="height:14px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:8px"><div style="height:100%;width:${pctAll}%;background:#16a34a;border-radius:999px"></div></div><p class="small">${doneAll} logement${doneAll>1?'s':''} terminé${doneAll>1?'s':''} sur ${totalAll}</p></div>
-  <div class="row" style="margin-bottom:14px;flex-wrap:wrap"><button class="btn" onclick="newChantier()">+ Nouveau chantier</button><button class="btn secondary" onclick="managePoseurs()">👷 Gérer les poseurs</button><button class="btn secondary" onclick="manageAdmins()">👤 Gérer les administrateurs</button></div>
+  <div class="row" style="margin-bottom:14px;flex-wrap:wrap"><button class="btn" onclick="newChantier()">+ Nouveau chantier</button><button class="btn secondary" onclick="managePoseurs()">👷 Gérer les poseurs</button><button class="btn secondary" onclick="manageAdmins()">👤 Gérer les administrateurs</button><button class="btn secondary" onclick="manageChargeAffaires()">👔 Gérer les chargés d’affaire</button></div>
   <div id="list">${chantiers?.length?chantiers.map(c=>{const s=stats[c.id]||{total:0,done:0};const todo=s.total-s.done;const pct=s.total?Math.round(s.done*100/s.total):0;return `<div class="item">
     <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">${esc(c.nom)}</h3><span class="status-badge ${pct===100&&s.total?'status-done':'status-todo'}">${pct===100&&s.total?'✅ Terminé':'⏳ En cours'}</span></div>
     <p class="small">Créé le ${new Date(c.created_at).toLocaleDateString("fr-FR")}</p>
@@ -331,7 +344,51 @@ async function deleteChantier(chantierId, chantierNom){
 }
 
 
+async function chargeAffaireHome(){
+  if(!isChargeAffaire()) return adminHome();
+  const user=(await supabaseClient.auth.getUser()).data.user;
+  const {data:chantiers,error}=await supabaseClient.from('chantiers').select('*').eq('charge_affaire_id',user.id).order('created_at',{ascending:false});
+  if(error){set('Erreur : '+esc(error.message),'error');return;}
+  const ids=(chantiers||[]).map(c=>c.id); let logements=[];
+  if(ids.length){const {data:l,error:le}=await supabaseClient.from('logements').select('id,chantier_id,statut').in('chantier_id',ids);if(le){set('Erreur : '+esc(le.message),'error');return;}logements=l||[];}
+  const stats={};(chantiers||[]).forEach(c=>stats[c.id]={total:0,done:0});
+  logements.forEach(l=>{if(!stats[l.chantier_id])stats[l.chantier_id]={total:0,done:0};stats[l.chantier_id].total++;if(l.statut==='Terminé')stats[l.chantier_id].done++;});
+  const totalAll=logements.length,doneAll=logements.filter(x=>x.statut==='Terminé').length,todoAll=totalAll-doneAll,pctAll=totalAll?Math.round(doneAll*100/totalAll):0;
+  app.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><div><span class="badge">CHARGÉ D’AFFAIRE</span><h2>Mes chantiers</h2></div><button class="btn secondary" onclick="logout()">Déconnexion</button></div>
+  <div class="progress-stats"><div><b>${(chantiers||[]).length}</b><span>🏗️ Chantiers</span></div><div><b>${totalAll}</b><span>🏠 Logements</span></div><div><b>${doneAll}</b><span>✅ Terminés</span></div><div><b>${todoAll}</b><span>⏳ À faire</span></div></div>
+  <div class="item"><div class="row" style="justify-content:space-between"><b>Avancement global</b><b>${pctAll}%</b></div><div style="height:14px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:8px"><div style="height:100%;width:${pctAll}%;background:#16a34a;border-radius:999px"></div></div></div>
+  <div class="row" style="margin-bottom:14px"><button class="btn" onclick="newChantier()" ${hasPermission('create_chantiers')?'':'disabled'}>+ Nouveau chantier</button>${hasPermission('manage_poseurs')?`<button class="btn secondary" onclick="managePoseurs()">👷 Gérer les poseurs</button>`:''}${hasPermission('manage_admins')?`<button class="btn secondary" onclick="manageAdmins()">👤 Gérer les administrateurs</button>`:''}</div>
+  ${chantiers?.length?chantiers.map(c=>{const st=stats[c.id]||{total:0,done:0};const todo=st.total-st.done,pct=st.total?Math.round(st.done*100/st.total):0;return `<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">🏗️ ${esc(c.nom)}</h3><span class="status-badge ${pct===100&&st.total?'status-done':'status-todo'}">${pct===100&&st.total?'✅ Terminé':'⏳ En cours'}</span></div><p class="small">Créé le ${new Date(c.created_at).toLocaleDateString('fr-FR')}</p><div class="row" style="justify-content:space-between"><span>🏠 ${st.total} logements</span><span>⏳ ${todo} à faire</span><span>✅ ${st.done} terminés</span><b>${pct}%</b></div><div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:8px 0 12px"><div style="height:100%;width:${pct}%;background:#16a34a;border-radius:999px"></div></div><button class="btn" style="width:100%" onclick="openChantier('${c.id}')">Ouvrir le chantier</button></div>`;}).join(''):'<p class="small">Aucun chantier ne vous est attribué.</p>'}</div>`;
+}
+
+async function manageChargeAffaires(){
+  if(currentProfile?.role!=='admin') return;
+  const {data:cas,error}=await supabaseClient.from('profiles').select('id,email,full_name,created_at').eq('role','charge_affaire').order('email');
+  if(error){alert(error.message);return;}
+  const ids=(cas||[]).map(x=>x.id); let perms=[];
+  if(ids.length){const {data:p,error:pe}=await supabaseClient.from('charge_affaire_permissions').select('*').in('profile_id',ids);if(pe){alert(pe.message);return;}perms=p||[];}
+  const pmap=Object.fromEntries(perms.map(x=>[x.profile_id,x]));
+  const defs=[['create_chantiers','Créer des chantiers'],['manage_logements','Gérer les logements'],['manage_poseurs','Gérer les poseurs'],['manage_admins','Gérer les administrateurs'],['view_quitus','Voir le Quitus'],['fill_quitus','Remplir le Quitus'],['sign_entreprise','Signer côté entreprise'],['sign_locataire','Signer côté locataire'],['manage_photos','Gérer les photos'],['manage_comments','Gérer les commentaires'],['view_reports','Voir / exporter les rapports']];
+  app.innerHTML=`<div class="card"><div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button></div><span class="badge">ADMINISTRATEUR</span><h2>👔 Gestion des chargés d’affaire</h2><p class="small">Crée les comptes et attribue les droits individuellement. Les boutons correspondants seront affichés uniquement lorsque le droit est accordé.</p>
+  <div class="item"><h3>➕ Nouveau chargé d’affaire</h3><label>Nom / prénom</label><input id="newCaName" type="text" placeholder="Ex. Jean Dupont"><label>Email</label><input id="newCaEmail" type="email" placeholder="charge.affaire@glen.fr"><label>Mot de passe provisoire</label><div class="password-wrap"><input id="newCaPassword" type="password" placeholder="Minimum 6 caractères"><button type="button" class="password-eye" onclick="togglePasswordVisibility('newCaPassword',this)">👁️</button></div><h4>Droits initiaux</h4><div class="ca-permissions-grid">${defs.map(([k,label])=>`<label class="checkbox-field"><input type="checkbox" data-new-ca-perm="${k}"><span>${label}</span></label>`).join('')}</div><button class="btn" onclick="createChargeAffaire()">➕ Créer le chargé d’affaire</button><div id="caCreateMsg"></div></div>
+  <div class="item"><h3>👔 Chargés d’affaire existants <span class="poseurs-count">${(cas||[]).length}</span></h3>${(cas||[]).length?(cas||[]).map(c=>{const p=pmap[c.id]||{};return `<div class="item" style="background:#fafcfe"><div class="row" style="justify-content:space-between"><div><b>👔 ${esc(c.full_name||'Chargé d’affaire')}</b><div class="small">${esc(c.email||'')}</div></div><button class="btn" onclick="saveChargeAffairePermissions('${c.id}')">💾 Enregistrer les droits</button></div><div class="ca-permissions-grid" style="margin-top:12px">${defs.map(([k,label])=>`<label class="checkbox-field"><input type="checkbox" data-ca-id="${c.id}" data-ca-perm="${k}" ${p[k]?'checked':''}><span>${label}</span></label>`).join('')}</div></div>`;}).join(''):'<p class="small">Aucun chargé d’affaire.</p>'}</div></div>`;
+}
+async function createChargeAffaire(){
+  const msg=document.getElementById('caCreateMsg');const full_name=document.getElementById('newCaName').value.trim();const email=document.getElementById('newCaEmail').value.trim().toLowerCase();const password=document.getElementById('newCaPassword').value;
+  if(!full_name||!email){msg.className='error';msg.textContent='Indique le nom et l’email.';return;}if(password.length<6){msg.className='error';msg.textContent='Le mot de passe doit contenir au moins 6 caractères.';return;}
+  const permissions={};document.querySelectorAll('[data-new-ca-perm]').forEach(x=>permissions[x.dataset.newCaPerm]=x.checked);msg.className='small';msg.textContent='Création du compte…';
+  const {data,error}=await supabaseClient.functions.invoke('create-charge-affaire',{body:{email,password,full_name,permissions}});
+  if(error||!data?.ok){msg.className='error';msg.textContent='Erreur : '+(error?.message||data?.error||'Création impossible.');return;}
+  msg.className='ok';msg.textContent='Chargé d’affaire créé : '+email;setTimeout(()=>manageChargeAffaires(),700);
+}
+async function saveChargeAffairePermissions(profileId){
+  if(currentProfile?.role!=='admin')return;const permissions={};document.querySelectorAll(`[data-ca-id="${profileId}"]`).forEach(x=>permissions[x.dataset.caPerm]=x.checked);
+  const {error}=await supabaseClient.from('charge_affaire_permissions').upsert({profile_id:profileId,...permissions,updated_at:new Date().toISOString()},{onConflict:'profile_id'});
+  if(error){alert('Erreur : '+error.message);return;}alert('Droits enregistrés.');
+}
+
 async function manageAdmins(){
+  if(!requirePermission('manage_admins','La gestion des administrateurs')) return;
   const {data:admins,error}=await supabaseClient.from('profiles').select('id,email,full_name,created_at').eq('role','admin').order('email');
   if(error){alert(error.message);return;}
   app.innerHTML=`<div class="card">
@@ -367,7 +424,7 @@ async function deleteAdmin(adminId, email){
   const label=email||'cet administrateur';
   if(!confirm(`Voulez-vous vraiment supprimer ${label} ?\n\nLe compte administrateur sera supprimé, mais les chantiers, logements, photos, Quitus et documents ne seront pas supprimés.`)) return;
 
-  const {data,error}=await supabaseClient.functions.invoke('delete-admin',{body:{userId:adminId}});
+  const {data,error}=await supabaseClient.functions.invoke('delete-admin-delegated',{body:{userId:adminId}});
   if(error){
     alert('Erreur lors de la suppression : '+(error.message||'Erreur inconnue.'));
     return;
@@ -389,7 +446,7 @@ async function createAdmin(){
   if(!email){msg.className='error';msg.textContent='Indique l’email.';return;}
   if(password.length<6){msg.className='error';msg.textContent='Le mot de passe provisoire doit contenir au moins 6 caractères.';return;}
   msg.className='small';msg.textContent='Création du compte administrateur…';
-  const {data,error}=await supabaseClient.functions.invoke('create-admin',{body:{email,password,full_name}});
+  const {data,error}=await supabaseClient.functions.invoke('create-admin-delegated',{body:{email,password,full_name}});
   if(error){msg.className='error';msg.textContent='Erreur : '+(error.message||error);return;}
   if(!data?.ok){msg.className='error';msg.textContent='Erreur : '+(data?.error||'Création impossible.');return;}
   msg.className='ok';msg.textContent='Administrateur créé : '+email;
@@ -400,6 +457,7 @@ async function createAdmin(){
 }
 
 async function managePoseurs(){
+  if(!requirePermission('manage_poseurs','La gestion des poseurs')) return;
   const {data:poseurs,error}=await supabaseClient.from('profiles').select('id,email,full_name,created_at').eq('role','poseur').order('email');
   if(error){alert(error.message);return;}
   app.innerHTML=`<div class="card">
@@ -476,36 +534,51 @@ async function createPoseur(){
 }
 
 async function newChantier(){
+  if(!requirePermission('create_chantiers','La création de chantier')) return;
   const nom=prompt("Nom du chantier");
   if(!nom?.trim()) return;
   const user=(await supabaseClient.auth.getUser()).data.user;
-  const {error}=await supabaseClient.from("chantiers").insert({nom:nom.trim(),created_by:user.id});
-  if(error){alert(error.message);return;} adminHome();
+  const payload={nom:nom.trim(),created_by:user.id};
+  if(isChargeAffaire()) payload.charge_affaire_id=user.id;
+  const {error}=await supabaseClient.from("chantiers").insert(payload);
+  if(error){alert(error.message);return;}
+  isChargeAffaire()?chargeAffaireHome():adminHome();
 }
 async function openChantier(id){
-  const {data:c}=await supabaseClient.from("chantiers").select("*").eq("id",id).single();
+  const {data:c,error:ce}=await supabaseClient.from("chantiers").select("*").eq("id",id).single();
+  if(ce||!c){set("Chantier introuvable.","error");return;}
+  if(isChargeAffaire() && c.charge_affaire_id!==currentProfile.id){set("Accès refusé à ce chantier.","error");return;}
   window.currentOpenChantierName=c?.nom||"";
-  const {data:l}=await supabaseClient.from("logements").select("*").eq("chantier_id",id).order("created_at");
-  const {data:a}=await supabaseClient.from("chantier_poseurs").select("poseur_id, profiles(id,email,full_name)").eq("chantier_id",id);
-  const {data:p}=await supabaseClient.from("profiles").select("id,email,full_name").eq("role","poseur").order("email");
+  const {data:l,error:le}=await supabaseClient.from("logements").select("*").eq("chantier_id",id).order("created_at");
+  if(le){set("Erreur : "+esc(le.message),"error");return;}
+  const canPoseurs=hasPermission('manage_poseurs');
+  const canLogements=hasPermission('manage_logements');
+  const canReports=hasPermission('view_reports');
+  let a=[],p=[];
+  if(canPoseurs){
+    const ar=await supabaseClient.from("chantier_poseurs").select("poseur_id, profiles(id,email,full_name)").eq("chantier_id",id); a=ar.data||[];
+    const pr=await supabaseClient.from("profiles").select("id,email,full_name").eq("role","poseur").order("email"); p=pr.data||[];
+  }
   const total=(l||[]).length, done=(l||[]).filter(x=>x.statut==='Terminé').length, todo=total-done;
   const poseurIds=[...(new Set((l||[]).map(x=>x.termine_par).filter(Boolean)))];
   let termineProfiles={};
   if(poseurIds.length){ const {data:tp}=await supabaseClient.from("profiles").select("id,email,full_name").in("id",poseurIds); (tp||[]).forEach(x=>termineProfiles[x.id]=x); }
-  const logementHtml=(x)=>{ const pr=x.termine_par?termineProfiles[x.termine_par]:null; return `<div class="item logement-item" data-statut="${x.statut==='Terminé'?'termine':'afaire'}"><div class="row" style="justify-content:space-between;align-items:center"><div>${x.module?`<div class="small" style="font-weight:700;color:#334155;margin-bottom:3px">Module : ${esc(x.module)}</div>`:""}<b>${esc(x.nom||"Logement")}</b></div><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p>${x.statut==='Terminé'?`<p class="done-note">✅ Terminé le ${x.termine_at?new Date(x.termine_at).toLocaleString('fr-FR'):''}${pr?` par ${esc(pr.full_name||pr.email)}`:''}</p>`:''}<div class="row"><button class="btn secondary" onclick="openLogement('${x.id}','admin')">📷 Photos / 📄 PDF</button><button class="btn" onclick="exportLogementDossier('${x.id}')">📦 Exporter le dossier</button>${x.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${x.id}','À faire')">↩️ Rouvrir</button>`:''}</div></div>`; };
+  const openMode=isChargeAffaire()?'charge':'admin';
+  const back=isChargeAffaire()?'chargeAffaireHome()':'adminHome()';
+  const logementHtml=(x)=>{
+    const pr=x.termine_par?termineProfiles[x.termine_par]:null;
+    return `<div class="item logement-item" data-statut="${x.statut==='Terminé'?'termine':'afaire'}"><div class="row" style="justify-content:space-between;align-items:center"><div>${x.module?`<div class="small" style="font-weight:700;color:#334155;margin-bottom:3px">Module : ${esc(x.module)}</div>`:""}<b>${esc(x.nom||"Logement")}</b></div><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p>${x.statut==='Terminé'?`<p class="done-note">✅ Terminé le ${x.termine_at?new Date(x.termine_at).toLocaleString('fr-FR'):''}${pr?` par ${esc(pr.full_name||pr.email)}`:''}</p>`:''}<div class="row"><button class="btn secondary" onclick="openLogement('${x.id}','${openMode}')">📷 Photos / 📄 PDF</button>${canReports?`<button class="btn" onclick="exportLogementDossier('${x.id}')">📦 Exporter le dossier</button>`:''}${canLogements&&x.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${x.id}','À faire')">↩️ Rouvrir</button>`:''}</div></div>`;
+  };
   app.innerHTML=`<div class="card">
-    <div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button><button class="btn" onclick="exportChantierDossier('${id}')">📦 Exporter le chantier</button></div>
-    <h2>${esc(c.nom)}</h2>
+    <div class="row"><button class="btn secondary" onclick="${back}">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button>${canReports?`<button class="btn" onclick="exportChantierDossier('${id}')">📦 Exporter le chantier</button>`:''}</div>
+    <span class="badge">${isChargeAffaire()?'CHARGÉ D’AFFAIRE':'ADMINISTRATEUR'}</span><h2>${esc(c.nom)}</h2>
     <div class="progress-stats"><div><b>${total}</b><span>Total logements</span></div><div><b>${todo}</b><span>⏳ À faire</span></div><div><b>${done}</b><span>✅ Terminés</span></div></div>
-    <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Logements</h3><div class="row"><button class="btn" onclick="createManualLogement('${id}')">➕ Créer un client</button><label class="btn" style="display:inline-block;text-align:center">📥 Importer Excel<input id="excelInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewExcel('${id}',this.files[0])"></label></div></div>
+    <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Logements</h3>${canLogements?`<div class="row"><button class="btn" onclick="createManualLogement('${id}')">➕ Créer un client</button><label class="btn" style="display:inline-block;text-align:center">📥 Importer Excel<input id="excelInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewExcel('${id}',this.files[0])"></label></div>`:''}</div>
     <div class="row filter-row"><button class="btn filter-btn" onclick="filterLogements('tous',this)">Tous (${total})</button><button class="btn secondary filter-btn" onclick="filterLogements('afaire',this)">⏳ À faire (${todo})</button><button class="btn secondary filter-btn" onclick="filterLogements('termine',this)">✅ Terminés (${done})</button></div>
-    <p class="small">L'import se fait dans ce chantier. Les logements seront associés automatiquement à <b>${esc(c.nom)}</b>.</p>
+    <p class="small">Les logements de ce chantier sont associés à <b>${esc(c.nom)}</b>.</p>
     <div id="logementsList">${l?.length?l.map(logementHtml).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}</div>
     <div id="importArea"></div>
-    <hr><h3>👷 Gestion des poseurs</h3>
-    <p class="small">Seuls les poseurs affectés peuvent accéder à ce chantier sur leur téléphone.</p>
-    <div class="item"><b>Poseurs affectés</b>${a?.length?a.map(x=>`<div style="margin-top:12px;padding:12px;border:1px solid #dce3e9;border-radius:12px"><div style="font-weight:700">👷 ${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}</div>${x.profiles?.full_name?`<div class="small">${esc(x.profiles.email||"")}</div>`:""}<button class="btn danger" style="margin-top:10px;padding:9px 12px;font-size:14px" onclick="removePoseur('${id}','${x.poseur_id}')">❌ Retirer ce poseur</button></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div>
-    <div class="item"><b>Ajouter un poseur</b><select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin:10px 0"><option value="">Choisir un poseur</option>${p?.filter(x=>!(a||[]).some(y=>y.poseur_id===x.id)).map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}</option>`).join("")}</select><button class="btn" onclick="assignPoseur('${id}')">➕ Affecter le poseur</button></div>
+    ${canPoseurs?`<hr><h3>👷 Gestion des poseurs</h3><p class="small">Seuls les poseurs affectés peuvent accéder à ce chantier sur leur téléphone.</p><div class="item"><b>Poseurs affectés</b>${a?.length?a.map(x=>`<div style="margin-top:12px;padding:12px;border:1px solid #dce3e9;border-radius:12px"><div style="font-weight:700">👷 ${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}</div>${x.profiles?.full_name?`<div class="small">${esc(x.profiles.email||"")}</div>`:""}<button class="btn danger" style="margin-top:10px;padding:9px 12px;font-size:14px" onclick="removePoseur('${id}','${x.poseur_id}')">❌ Retirer ce poseur</button></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div><div class="item"><b>Ajouter un poseur</b><select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin:10px 0"><option value="">Choisir un poseur</option>${p?.filter(x=>!(a||[]).some(y=>y.poseur_id===x.id)).map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}</option>`).join("")}</select><button class="btn" onclick="assignPoseur('${id}')">➕ Affecter le poseur</button></div>`:''}
   </div>`;
 }
 function filterLogements(filter,btn){
@@ -515,6 +588,7 @@ function filterLogements(filter,btn){
 }
 
 async function assignPoseur(chantierId){
+  if(!requirePermission('manage_poseurs','La gestion des poseurs')) return;
   const poseurId=document.getElementById("poseurSelect").value;
   if(!poseurId){alert("Choisis un poseur.");return;}
   const {error}=await supabaseClient.from("chantier_poseurs").insert({chantier_id:chantierId,poseur_id:poseurId});
@@ -523,6 +597,7 @@ async function assignPoseur(chantierId){
 }
 
 async function removePoseur(chantierId,poseurId){
+  if(!requirePermission('manage_poseurs','La gestion des poseurs')) return;
   if(!confirm("Retirer ce poseur de ce chantier ? Il ne pourra plus voir ce chantier sur son téléphone.")) return;
   const {error}=await supabaseClient.from("chantier_poseurs").delete().eq("chantier_id",chantierId).eq("poseur_id",poseurId);
   if(error){alert(error.message);return;}
@@ -555,6 +630,7 @@ function mapHeaders(headers){
   return out;
 }
 async function previewExcel(chantierId,file){
+  if(!requirePermission('manage_logements','L’import des logements')) return;
   if(!file)return;
   const area=document.getElementById("importArea");
   area.innerHTML='<div class="item"><b>Lecture du fichier…</b></div>';
@@ -576,6 +652,7 @@ async function previewExcel(chantierId,file){
 }
 function cancelImport(chantierId){window.glenImport=null; openChantier(chantierId);}
 async function validateImport(){
+  if(!requirePermission('manage_logements','L’import des logements')) return;
   const imp=window.glenImport; if(!imp)return;
   const msg=document.getElementById("importMsg"); if(msg)msg.textContent="Import en cours…";
   const payload=imp.data.map(x=>({...x,chantier_id:imp.chantierId}));
@@ -586,36 +663,62 @@ async function validateImport(){
 }
 
 async function poseurHome(){
-  const {data:rows,error}=await supabaseClient.from("chantier_poseurs").select("chantier_id,chantiers(id,nom)");
+  const {data:rows,error}=await supabaseClient.from("chantier_poseurs").select("chantier_id,chantiers(id,nom,created_at)");
   if(error){set("Erreur : "+esc(error.message),"error");return;}
-  const ids=(rows||[]).map(r=>r.chantier_id).filter(Boolean);
+  const ids=[...new Set((rows||[]).map(r=>r.chantier_id).filter(Boolean))];
   let logements=[];
   if(ids.length){
-    const {data:l,error:le}=await supabaseClient.from("logements").select("*").in("chantier_id",ids).order("created_at");
+    const {data:l,error:le}=await supabaseClient.from("logements").select("id,chantier_id,statut").in("chantier_id",ids);
     if(le){set("Erreur : "+esc(le.message),"error");return;}
-    const names={}; (rows||[]).forEach(r=>names[r.chantier_id]=r.chantiers?.nom||"Chantier");
-    logements=(l||[]).map(x=>({...x,chantier_nom:names[x.chantier_id]||"Chantier"}));
+    logements=l||[];
   }
-  window.poseurLogements=logements;
+  const chantierMap={};
+  (rows||[]).forEach(r=>{
+    const c=r.chantiers;
+    if(c && !chantierMap[c.id]) chantierMap[c.id]={...c,total:0,done:0};
+  });
+  logements.forEach(l=>{
+    if(!chantierMap[l.chantier_id]) chantierMap[l.chantier_id]={id:l.chantier_id,nom:"Chantier",total:0,done:0};
+    chantierMap[l.chantier_id].total++;
+    if(l.statut==='Terminé') chantierMap[l.chantier_id].done++;
+  });
+  const chantiers=Object.values(chantierMap).sort((a,b)=>{
+    const da=a.created_at?new Date(a.created_at).getTime():0;
+    const db=b.created_at?new Date(b.created_at).getTime():0;
+    return db-da;
+  });
+  window.poseurChantiers=chantiers;
+  window.poseurLogements=[];
   app.innerHTML=`<div class="card">
     <div class="row" style="justify-content:space-between">
-      <div><span class="badge">POSEUR</span><h2>🏠 Mes logements</h2></div>
+      <div><span class="badge">POSEUR</span><h2>🏗️ Mes chantiers</h2></div>
       <button class="btn secondary" onclick="logout()">Déconnexion</button>
     </div>
     <div class="progress-stats" style="grid-template-columns:repeat(3,1fr)">
-      <div><b>${logements.length}</b><span>Total</span></div>
-      <div><b>${logements.filter(x=>x.statut!=='Terminé').length}</b><span>⏳ À faire</span></div>
+      <div><b>${chantiers.length}</b><span>🏗️ Chantiers</span></div>
+      <div><b>${logements.length}</b><span>🏠 Logements</span></div>
       <div><b>${logements.filter(x=>x.statut==='Terminé').length}</b><span>✅ Terminés</span></div>
     </div>
-    <input id="poseurSearch" type="search" placeholder="🔎 Rechercher nom, adresse ou numéro de logement…" oninput="renderPoseurLogements()">
-    <div class="row filter-row">
-      <button class="btn filter-btn" onclick="setPoseurFilter('all')">Tous</button>
-      <button class="btn secondary filter-btn" onclick="setPoseurFilter('todo')">⏳ À faire</button>
-      <button class="btn secondary filter-btn" onclick="setPoseurFilter('done')">✅ Terminés</button>
-    </div>
-    <div id="poseurLogementList"></div>
+    <p class="small">Choisis d'abord le chantier. Les logements sont ensuite affichés à l'intérieur du chantier.</p>
+    <div id="poseurChantierList">${chantiers.length?chantiers.map(c=>{
+      const todo=c.total-c.done;
+      const pct=c.total?Math.round(c.done*100/c.total):0;
+      return `<div class="item" style="margin-bottom:14px">
+        <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+          <h3 style="margin:0">🏗️ ${esc(c.nom||'Chantier')}</h3>
+          <span class="status-badge ${pct===100&&c.total?'status-done':'status-todo'}">${pct===100&&c.total?'✅ Terminé':'⏳ En cours'}</span>
+        </div>
+        <div class="row" style="justify-content:space-between;margin-top:10px;gap:8px">
+          <span>🏠 ${c.total} logement${c.total>1?'s':''}</span>
+          <span>⏳ ${todo} à faire</span>
+          <span>✅ ${c.done} terminé${c.done>1?'s':''}</span>
+          <b>${pct}%</b>
+        </div>
+        <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:8px 0 12px"><div style="height:100%;width:${pct}%;background:#16a34a;border-radius:999px"></div></div>
+        <button class="btn" style="width:100%" onclick="poseurChantier('${c.id}')">Ouvrir le chantier</button>
+      </div>`;
+    }).join(''):'<p class="small">Aucun chantier ne vous est affecté.</p>'}</div>
   </div>`;
-  window.poseurFilter='all'; setPoseurFilter('all');
 }
 function setPoseurFilter(f){
   window.poseurFilter=f;
@@ -634,17 +737,47 @@ function renderPoseurLogements(){
     const status=f==='done' ? x.statut==='Terminé' : f==='todo' ? x.statut!=='Terminé' : true;
     return status && (!q || hay.includes(q));
   });
-  const groups={}; data.forEach(x=>(groups[x.chantier_nom]??=[]).push(x));
   if(!data.length){list.innerHTML='<p class="small">Aucun logement correspondant.</p>';return;}
-  list.innerHTML=Object.entries(groups).map(([chantier,items])=>`<div style="margin-top:18px"><h3 style="margin-bottom:8px">🏗️ ${esc(chantier)}</h3>${items.map(x=>`<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><div>${x.module?`<div class="small" style="font-weight:700;color:#334155;margin-bottom:3px">Module : ${esc(x.module)}</div>`:""}<h3 style="margin:0">${esc(x.nom||"Logement")}</h3><p>${esc(x.adresse||"")}</p>${x.n_log?`<p class="small">N° logement : ${esc(x.n_log)}</p>`:''}</div><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><button class="btn" onclick="openLogement('${x.id}')">Ouvrir le logement</button></div>`).join('')}</div>`).join('');
+  list.innerHTML=data.map(x=>`<div class="item logement-item" data-statut="${x.statut==='Terminé'?'termine':'afaire'}">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <div>${x.module?`<div class="small" style="font-weight:700;color:#334155;margin-bottom:3px">Module : ${esc(x.module)}</div>`:''}<h3 style="margin:0">${esc(x.nom||'Logement')}</h3></div>
+      <span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span>
+    </div>
+    <p>${esc(x.adresse||'')}</p>
+    <p class="small">${esc(x.code||'')} ${esc(x.commune||'')} ${x.num_bat?'• Bat '+esc(x.num_bat):''} ${x.num_log?'• Log '+esc(x.num_log):''} ${x.etage?'• Étage '+esc(x.etage):''}</p>
+    ${x.statut==='Terminé'&&x.termine_at?`<p class="done-note">✅ Terminé le ${new Date(x.termine_at).toLocaleString('fr-FR')}</p>`:''}
+    <button class="btn" style="width:100%" onclick="openLogement('${x.id}')">Ouvrir le logement</button>
+  </div>`).join('');
 }
 async function poseurChantier(id){
-  const {data:c}=await supabaseClient.from("chantiers").select("*").eq("id",id).single();
-  if(!c){set("Chantier introuvable.","error");return;}
+  const {data:c,error:ce}=await supabaseClient.from("chantiers").select("*").eq("id",id).single();
+  if(ce||!c){set("Chantier introuvable.","error");return;}
   const {data:l,error}=await supabaseClient.from("logements").select("*").eq("chantier_id",id).order("created_at");
   if(error){set("Erreur : "+esc(error.message),"error");return;}
   window.poseurLogements=(l||[]).map(x=>({...x,chantier_nom:c.nom||"Chantier"}));
-  app.innerHTML=`<div class="card"><button class="btn secondary" onclick="poseurHome()">← Mes logements</button><h2>${esc(c.nom)}</h2><div id="poseurLogementList"></div></div>`;
+  const total=window.poseurLogements.length;
+  const done=window.poseurLogements.filter(x=>x.statut==='Terminé').length;
+  const todo=total-done;
+  const pct=total?Math.round(done*100/total):0;
+  app.innerHTML=`<div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+      <div><span class="badge">CHANTIER</span><h2 style="margin-bottom:4px">🏗️ ${esc(c.nom)}</h2><p class="small" style="margin:0">${total} logement${total>1?'s':''}</p></div>
+      <button class="btn secondary" onclick="poseurHome()">← Mes chantiers</button>
+    </div>
+    <div class="progress-stats" style="grid-template-columns:repeat(3,1fr)">
+      <div><b>${total}</b><span>🏠 Total</span></div>
+      <div><b>${todo}</b><span>⏳ À faire</span></div>
+      <div><b>${done}</b><span>✅ Terminés</span></div>
+    </div>
+    <div class="item" style="margin-bottom:14px"><div class="row" style="justify-content:space-between"><b>Avancement du chantier</b><b>${pct}%</b></div><div style="height:12px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:8px"><div style="height:100%;width:${pct}%;background:#16a34a;border-radius:999px"></div></div></div>
+    <input id="poseurSearch" type="search" placeholder="🔎 Rechercher un logement, une adresse ou un numéro…" oninput="renderPoseurLogements()">
+    <div class="row filter-row">
+      <button class="btn filter-btn" onclick="setPoseurFilter('all')">Tous</button>
+      <button class="btn secondary filter-btn" onclick="setPoseurFilter('todo')">⏳ À faire</button>
+      <button class="btn secondary filter-btn" onclick="setPoseurFilter('done')">✅ Terminés</button>
+    </div>
+    <div id="poseurLogementList"></div>
+  </div>`;
   window.poseurFilter='all'; setPoseurFilter('all');
 }
 async function openLogement(id,mode='poseur'){
@@ -654,28 +787,40 @@ async function openLogement(id,mode='poseur'){
   if(pe){set("Erreur photos : "+esc(pe.message),"error");return;}
   const {data:pdf,error:de}=await supabaseClient.from("pdf_documents").select("*").eq("logement_id",id).maybeSingle();
   if(de){set("Erreur PDF : "+esc(de.message),"error");return;}
-  const back=mode==='admin'?`openChantier('${l.chantier_id}')`:`poseurChantier('${l.chantier_id}')`;
+  const ca=mode==='charge';
+  const admin=mode==='admin';
+  if(ca){
+    const {data:c}=await supabaseClient.from('chantiers').select('charge_affaire_id').eq('id',l.chantier_id).single();
+    if(!c || c.charge_affaire_id!==currentProfile.id){set('Accès refusé à ce logement.','error');return;}
+  }
+  const back=admin?`openChantier('${l.chantier_id}')`:ca?`openChantier('${l.chantier_id}')`:`poseurChantier('${l.chantier_id}')`;
+  const canComment=mode==='poseur'||admin||(ca&&hasPermission('manage_comments'));
+  const canPhotos=mode==='poseur'||admin||(ca&&hasPermission('manage_photos'));
+  const canViewQuitus=mode==='poseur'||admin||(ca&&hasPermission('view_quitus'));
+  const canFill=mode==='poseur'||admin||(ca&&hasPermission('fill_quitus'));
+  const canSignEnt=mode==='poseur'||admin||(ca&&hasPermission('sign_entreprise'));
+  const canSignLoc=mode==='poseur'||admin||(ca&&hasPermission('sign_locataire'));
+  const canManageLogements=admin||hasPermission('manage_logements');
+  const canReports=admin||hasPermission('view_reports');
+  const pdfButtons=pdf?`${canViewQuitus?`<button class="btn" onclick="${mode==='poseur'?`openPdfPoseur('${pdf.id}','${encodeURIComponent(pdf.storage_path||'')}')`:`openPdf('${pdf.id}')`}">📄 Quitus</button>`:''}${canFill?`<button type="button" class="btn" data-glen-action="fill-quitus" data-pdf-id="${pdf.id}" data-logement-id="${l.id}">✏️ Remplir le Quitus</button>`:''}${canSignEnt?`<button type="button" class="btn" data-glen-action="sign" data-pdf-id="${pdf.id}" data-logement-id="${l.id}" data-role="entreprise">✍️ ${pdf?.signature_entreprise_at?'Entreprise signée':'Entreprise'}</button>`:''}${canSignLoc?`<button type="button" class="btn" data-glen-action="sign" data-pdf-id="${pdf.id}" data-logement-id="${l.id}" data-role="locataire">✍️ ${pdf?.signature_locataire_at?'Locataire signé':'Locataire'}</button>`:''}${canManageLogements?`<button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:''}`:'';
   app.innerHTML=`<div class="card">
-    <div class="row"><button class="btn secondary" onclick="${back}">← Retour</button>${mode==='admin'?'<span class="badge">ADMINISTRATEUR</span>':'<span class="badge">POSEUR</span>'}</div>
+    <div class="row"><button class="btn secondary" onclick="${back}">← Retour</button><span class="badge">${admin?'ADMINISTRATEUR':ca?'CHARGÉ D’AFFAIRE':'POSEUR'}</span></div>
     ${l.module?`<div class="small" style="font-weight:700;color:#334155;margin-top:8px">Module : ${esc(l.module)}</div>`:""}<h2>${esc(l.nom||"Logement")}</h2><p>${esc(l.adresse||"")}</p>
-    <div class="comment-box"><h3>📝 Commentaire</h3><textarea id="logementComment" placeholder="Écrire un commentaire ou utiliser la dictée vocale…">${esc(l.commentaire ?? getLocalComment(l.id))}</textarea><div class="comment-actions"><button class="btn secondary" id="dictationBtn" type="button" onclick="startCommentDictation()">🎙️ Dicter</button><button class="btn save-comment" type="button" onclick="saveLogementComment('${l.id}')">💾 Enregistrer le commentaire</button></div><div id="commentMsg" class="small"></div></div>
+    ${canComment?`<div class="comment-box"><h3>📝 Commentaire</h3><textarea id="logementComment" placeholder="Écrire un commentaire ou utiliser la dictée vocale…">${esc(l.commentaire ?? getLocalComment(l.id))}</textarea><div class="comment-actions"><button class="btn secondary" id="dictationBtn" type="button" onclick="startCommentDictation()">🎙️ Dicter</button><button class="btn save-comment" type="button" onclick="saveLogementComment('${l.id}')">💾 Enregistrer le commentaire</button></div><div id="commentMsg" class="small"></div></div>`:l.commentaire?`<div class="comment-box"><h3>📝 Commentaire</h3><div style="white-space:pre-wrap;font-size:17px">${esc(l.commentaire)}</div></div>`:''}
     <hr><h3>📄 Document PDF original</h3>
-    ${mode==='admin'?`<label class="btn file-label">📄 ${pdf?'Remplacer le PDF':'Ajouter le PDF original'}<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadPdf('${l.id}',this.files[0])"></label>`:''}
+    ${canManageLogements?`<label class="btn file-label">📄 ${pdf?'Remplacer le PDF':'Ajouter le PDF original'}<input id="pdfInput" type="file" accept="application/pdf,.pdf" style="display:none" onchange="uploadPdf('${l.id}',this.files[0])"></label>`:''}
     <div id="pdfMsg"></div>
-    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div>${mode==='admin' && (pdf.signature_entreprise_at || pdf.signature_locataire_at) ? `<div class="small" style="margin-top:8px;line-height:1.6">${pdf.signature_entreprise_at?`<div>✅ <b>Entreprise signée</b> le ${new Date(pdf.signature_entreprise_at).toLocaleString('fr-FR')}</div>`:''}${pdf.signature_locataire_at?`<div>✅ <b>Locataire signé</b> le ${new Date(pdf.signature_locataire_at).toLocaleString('fr-FR')}</div>`:''}</div>` : ''}<div class="row" style="margin-top:10px"><button class="btn" onclick="${mode==='poseur'?`openPdfPoseur('${pdf.id}','${encodeURIComponent(pdf.storage_path||'')}')`:`openPdf('${pdf.id}')`}">📄 Quitus</button>${mode==='admin'?`<button type="button" class="btn" data-glen-action="fill-quitus" data-pdf-id="${pdf.id}" data-logement-id="${l.id}">✏️ Remplir le Quitus</button><button type="button" class="btn" data-glen-action="sign" data-pdf-id="${pdf.id}" data-logement-id="${l.id}" data-role="entreprise">✍️ ${pdf?.signature_entreprise_at?'Entreprise signée':'Entreprise'}</button><button type="button" class="btn" data-glen-action="sign" data-pdf-id="${pdf.id}" data-logement-id="${l.id}" data-role="locataire">✍️ ${pdf?.signature_locataire_at?'Locataire signé':'Locataire'}</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:mode==='poseur'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir le Quitus</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ Signer locataire</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ Signer entreprise</button>`:''}</div></div>`:isDemoChantierName(window.currentOpenChantierName)?'<button class="btn" onclick="createUniversalQuitus(\'${l.id}\')">📄 Créer le quitus universel</button><p class="small">Version de test : disponible uniquement sur le chantier DEMO.</p>':'<p class="small">Aucun PDF associé à ce logement.</p>'}
+    ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div>${(admin||ca) && (pdf.signature_entreprise_at || pdf.signature_locataire_at) ? `<div class="small" style="margin-top:8px;line-height:1.6">${pdf.signature_entreprise_at?`<div>✅ <b>Entreprise signée</b> le ${new Date(pdf.signature_entreprise_at).toLocaleString('fr-FR')}</div>`:''}${pdf.signature_locataire_at?`<div>✅ <b>Locataire signé</b> le ${new Date(pdf.signature_locataire_at).toLocaleString('fr-FR')}</div>`:''}</div>` : ''}<div class="row" style="margin-top:10px">${pdfButtons}</div></div>`:isDemoChantierName(window.currentOpenChantierName)?`<button class="btn" onclick="createUniversalQuitus('${l.id}')">📄 Créer le quitus universel</button><p class="small">Version de test : disponible uniquement sur le chantier DEMO.</p>`:'<p class="small">Aucun PDF associé à ce logement.</p>'}
     <p class="small">Le fichier est conservé comme PDF original, sans modification ni changement de mise en page.</p>
     <hr><h3>Photos</h3>
-    ${mode==='poseur'?`<div class="row">
-      <label class="btn file-label">📷 Prendre une photo<input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadPhoto('${l.id}',this.files[0])"></label>
-      <label class="btn secondary file-label">🖼️ Ajouter une photo<input id="photoInput" type="file" accept="image/*" multiple style="display:none" onchange="uploadPhotos('${l.id}',this.files)"></label>
-    </div><p class="small">Les photos sont automatiquement enregistrées dans ce logement et visibles par l'administrateur.</p>`:'<p class="small">Photos prises par le poseur sur ce logement.</p>'}
-    <div id="photoMsg"></div>
-    <div id="photoGrid" class="photo-grid">${renderPhotos(photos||[],mode)}</div>
-    <hr><div class="validate-box"><h3>📋 État du logement</h3><div class="status-badge ${l.statut==='Terminé'?'status-done':'status-todo'}">${l.statut==='Terminé'?'✅ Logement terminé':'⏳ Logement à faire'}</div>${l.statut==='Terminé'&&l.termine_at?`<div class="done-note">Terminé le ${new Date(l.termine_at).toLocaleString('fr-FR')}</div>`:''}${mode==='poseur'?`<div style="margin-top:12px">${l.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir le logement</button>`:`<button class="btn" onclick="setLogementStatus('${l.id}','Terminé')">✅ Terminer / Valider le logement</button>`}</div><p class="small">À utiliser uniquement lorsque les photos et le dossier du logement sont terminés.</p>`:''}${mode==='admin'&&l.statut==='Terminé'?`<div style="margin-top:12px"><button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir le logement</button></div>`:''}<div id="statusMsg"></div></div>
+    ${mode==='poseur'?`<div class="row"><label class="btn file-label">📷 Prendre une photo<input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadPhoto('${l.id}',this.files[0])"></label><label class="btn secondary file-label">🖼️ Ajouter une photo<input id="photoInput" type="file" accept="image/*" multiple style="display:none" onchange="uploadPhotos('${l.id}',this.files)"></label></div><p class="small">Les photos sont automatiquement enregistrées dans ce logement et visibles par l'administrateur.</p>`:ca&&canPhotos?`<div class="row"><label class="btn file-label">📷 Ajouter une photo<input id="photoInput" type="file" accept="image/*" multiple style="display:none" onchange="uploadPhotos('${l.id}',this.files)"></label></div>`:admin?'<p class="small">Photos prises par le poseur sur ce logement.</p>': '<p class="small">Photos du logement.</p>'}
+    <div id="photoMsg"></div><div id="photoGrid" class="photo-grid">${renderPhotos(photos||[],mode)}</div>
+    <hr><div class="validate-box"><h3>📋 État du logement</h3><div class="status-badge ${l.statut==='Terminé'?'status-done':'status-todo'}">${l.statut==='Terminé'?'✅ Logement terminé':'⏳ Logement à faire'}</div>${l.statut==='Terminé'&&l.termine_at?`<div class="done-note">Terminé le ${new Date(l.termine_at).toLocaleString('fr-FR')}</div>`:''}${mode==='poseur'?`<div style="margin-top:12px">${l.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir le logement</button>`:`<button class="btn" onclick="setLogementStatus('${l.id}','Terminé')">✅ Terminer / Valider le logement</button>`}</div><p class="small">À utiliser uniquement lorsque les photos et le dossier du logement sont terminés.</p>`:(ca&&canManageLogements)?`<div style="margin-top:12px">${l.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir</button>`:`<button class="btn" onclick="setLogementStatus('${l.id}','Terminé')">✅ Terminer / Valider le logement</button>`}</div>`:admin&&l.statut==='Terminé'?`<div style="margin-top:12px"><button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir le logement</button></div>`:''}<div id="statusMsg"></div></div>
   </div>`;
 }
 
 async function setLogementStatus(logementId,status){
+  if(isChargeAffaire() && !hasPermission('manage_logements')) return requirePermission('manage_logements','La gestion des logements');
   const msg=document.getElementById('statusMsg');
   const label=status==='Terminé'?'terminé':'à faire';
   if(status==='Terminé' && !confirm('Confirmer que ce logement est terminé ?')) return;
@@ -685,11 +830,12 @@ async function setLogementStatus(logementId,status){
     const payload=status==='Terminé'?{statut:'Terminé',termine_at:new Date().toISOString(),termine_par:user.id}:{statut:'À faire',termine_at:null,termine_par:null};
     const {error}=await supabaseClient.from('logements').update(payload).eq('id',logementId);
     if(error)throw error;
-    await openLogement(logementId,currentProfile?.role==='admin'?'admin':'poseur');
+    await openLogement(logementId,currentProfile?.role==='admin'?'admin':currentProfile?.role==='charge_affaire'?'charge':'poseur');
   }catch(e){if(msg){msg.className='error';msg.textContent='Erreur : '+e.message;}else alert(e.message);}
 }
 
 async function exportChantierDossier(chantierId){
+  if(!requirePermission('view_reports','L’export des rapports')) return;
   try{
     const {data:c,error:ce}=await supabaseClient.from('chantiers').select('*').eq('id',chantierId).single();
     if(ce||!c) throw ce||new Error('Chantier introuvable.');
@@ -806,6 +952,7 @@ function blobToDataUrl(blob){
 }
 
 async function exportLogementDossier(logementId){
+  if(!requirePermission('view_reports','L’export des rapports')) return;
   try{
     const btn=event?.currentTarget; if(btn){btn.disabled=true;btn.textContent='⏳ Export…';}
     const {data:l,error:le}=await supabaseClient.from('logements').select('*').eq('id',logementId).single();
@@ -857,6 +1004,7 @@ async function exportLogementDossier(logementId){
 function safeExportName(v){return String(v||'Logement').replace(/[\\/:*?"<>|]/g,'_').replace(/\s+/g,' ').trim().slice(0,100)||'Logement';}
 
 async function uploadPdf(logementId,file){
+  if(!requirePermission('manage_logements','La gestion du PDF original')) return;
   if(!file)return;
   const msg=document.getElementById('pdfMsg');
   if(msg){msg.className='small';msg.textContent='Enregistrement du PDF…';}
@@ -877,7 +1025,7 @@ async function uploadPdf(logementId,file){
     const {error:ie}=await supabaseClient.from('pdf_documents').insert({logement_id:logementId,original_filename:file.name,storage_path:path,uploaded_by:user.id});
     if(ie){await supabaseClient.storage.from('glen-documents').remove([path]);throw ie;}
     if(msg){msg.className='ok';msg.textContent='PDF enregistré.';}
-    await openLogement(logementId,'admin');
+    await openLogement(logementId,currentProfile?.role==='charge_affaire'?'charge':'admin');
   }catch(e){if(msg){msg.className='error';msg.textContent='Erreur : '+e.message;}}
 }
 let signatureCanvas=null, signatureCtx=null, signatureDrawing=false, signatureLast=null, signaturePdfId=null, signatureLogementId=null, signatureRole=null;
@@ -910,6 +1058,10 @@ if(!window.__glenAdminPdfButtonsBound){
 }
 
 window.openSignature = async function openSignature(pdfId,logementId,role='entreprise'){
+  if(currentProfile?.role==='charge_affaire'){
+    if(role==='locataire' && !requirePermission('sign_locataire','La signature locataire')) return;
+    if(role==='entreprise' && !requirePermission('sign_entreprise','La signature entreprise')) return;
+  }
   signaturePdfId=pdfId; signatureLogementId=logementId; signatureRole=(role==='locataire'||role==='entreprise')?role:'entreprise';
   const labels={entreprise:'Entreprise',locataire:'Locataire'};
   const label=labels[signatureRole]||'Entreprise';
@@ -1029,6 +1181,7 @@ const UNIVERSAL_DEMO_ONLY = true;
 function isDemoChantierName(nom){ return /demo/i.test(String(nom||'')); }
 
 async function createManualLogement(chantierId){
+  if(!requirePermission('manage_logements','La gestion des logements')) return;
   const html=`<div id="manualLogementModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>➕ Créer un client</h2><p class="sig-note">Création manuelle d’un logement dans ce chantier.</p>
   <label>Module</label><input id="manualModule" type="text" placeholder="Code module"><label>Nom du client / locataire</label><input id="manualNom" type="text" placeholder="Nom du locataire">
   <label>Adresse</label><input id="manualAdresse" type="text">
@@ -1041,6 +1194,7 @@ async function createManualLogement(chantierId){
   document.body.insertAdjacentHTML('beforeend',html);
 }
 async function saveManualLogement(chantierId){
+  if(!requirePermission('manage_logements','La gestion des logements')) return;
   const msg=document.getElementById('manualMsg'); const nom=document.getElementById('manualNom').value.trim();
   if(!nom){msg.className='error';msg.textContent='Indique au minimum le nom du client / locataire.';return;}
   msg.className='small';msg.textContent='Création…';
@@ -1070,7 +1224,7 @@ async function createUniversalQuitus(logementId){
     const {error:ue}=await supabaseClient.storage.from('glen-documents').upload(path,blob,{contentType:'application/pdf',upsert:false}); if(ue)throw ue;
     const {error:ie}=await supabaseClient.from('pdf_documents').insert({logement_id:logementId,original_filename:'Quitus universel.pdf',storage_path:path,uploaded_by:userData.user.id});
     if(ie){await supabaseClient.storage.from('glen-documents').remove([path]);throw ie;}
-    await openLogement(logementId,'admin');
+    await openLogement(logementId,currentProfile?.role==='charge_affaire'?'charge':'admin');
     setTimeout(()=>openFillPdfFromCurrent(logementId),250);
   }catch(e){alert('Erreur création quitus : '+(e?.message||e));}
 }
@@ -1165,6 +1319,7 @@ function quitusCurrentValue(name,type){
 }
 
 window.openFillPdf = async function openFillPdf(pdfId,logementId){
+  if(currentProfile?.role==='charge_affaire' && !requirePermission('fill_quitus','Remplir le Quitus')) return;
   fillPdfId=pdfId; fillLogementId=logementId;
   document.body.insertAdjacentHTML('beforeend',`<div id="fillModal" class="modal-backdrop"><div class="modal" style="max-height:92vh;overflow:auto"><h2>✏️ Remplir le PDF <span class="small">V36</span></h2><p class="sig-note">Les champs du modèle maître sont conservés à leur emplacement d'origine. Le PDF exporté reste modifiable.</p><div id="fillMsg" class="small">Chargement…</div><div id="fillFields"></div><div class="modal-actions"><button class="btn secondary" onclick="closeFillPdf()">Annuler</button><button class="btn" onclick="saveFilledPdf()">💾 Enregistrer le PDF</button></div></div></div>`);
   try{
@@ -1387,7 +1542,7 @@ async function deletePdf(pdfId,path,logementId){
   if(se){alert(se.message);return;}
   const {error:de}=await supabaseClient.from('pdf_documents').delete().eq('id',pdfId);
   if(de){alert(de.message);return;}
-  await openLogement(logementId,'admin');
+  await openLogement(logementId,currentProfile?.role==='charge_affaire'?'charge':'admin');
 }
 
 function renderPhotos(photos,mode){
@@ -1399,6 +1554,7 @@ async function uploadPhoto(logementId,file){
   await uploadPhotos(logementId,[file]);
 }
 async function uploadPhotos(logementId,files){
+  if(currentProfile?.role==='charge_affaire' && !hasPermission('manage_photos')) return requirePermission('manage_photos','La gestion des photos');
   const msg=document.getElementById('photoMsg');
   if(!files||!files.length)return;
   if(msg)msg.className='small'; if(msg)msg.textContent='Préparation de la photo…';
@@ -1425,6 +1581,7 @@ function compressImage(file){
   });
 }
 async function deletePhoto(photoId,path,logementId){
+  if(currentProfile?.role==='charge_affaire' && !hasPermission('manage_photos')) return requirePermission('manage_photos','La gestion des photos');
   if(!confirm('Supprimer cette photo ?'))return;
   const {error:se}=await supabaseClient.storage.from('glen-photos').remove([path]);
   if(se){alert(se.message);return;}
