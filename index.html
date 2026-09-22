@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="GLEN">
 
 <meta name="theme-color" content="#203a5d">
-<title>GLEN — V57 Signature visible</title>
+<title>GLEN — V48 Export autonome</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
@@ -663,8 +663,7 @@ async function openLogement(id,mode='poseur'){
     <div id="pdfMsg"></div>
     ${pdf?`<div class="pdf-box"><div class="pdf-name">${esc(pdf.original_filename)}</div><div class="small">Ajouté le ${new Date(pdf.updated_at||pdf.created_at).toLocaleString('fr-FR')}</div>
     ${mode==='admin' && (pdf.signature_entreprise_at || pdf.signature_locataire_at) ? `<div class="small" style="margin-top:8px;line-height:1.6">${pdf.signature_entreprise_at?`<div>✅ <b>Entreprise signée</b> le ${new Date(pdf.signature_entreprise_at).toLocaleString('fr-FR')}</div>`:''}${pdf.signature_locataire_at?`<div>✅ <b>Locataire signé</b> le ${new Date(pdf.signature_locataire_at).toLocaleString('fr-FR')}</div>`:''}</div>` : ''}
-    ${mode==='poseur' && (pdf.signature_entreprise_at || pdf.signature_locataire_at) ? `<div class="small" style="margin-top:8px;line-height:1.6">${pdf.signature_entreprise_at?`<div>✅ <b>Entreprise signée</b> le ${new Date(pdf.signature_entreprise_at).toLocaleString('fr-FR')}</div>`:''}${pdf.signature_locataire_at?`<div>✅ <b>Locataire signé</b> le ${new Date(pdf.signature_locataire_at).toLocaleString('fr-FR')}</div>`:''}</div>` : ''}
-    <div class="row" style="margin-top:10px"><button class="btn" onclick="${mode==='poseur'?`openPdfPoseur('${pdf.id}','${encodeURIComponent(pdf.storage_path||'')}')`:`openPdf('${pdf.id}')`}">📄 Quitus</button>${mode==='admin'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir le Quitus</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ ${pdf?.signature_entreprise_at?'Entreprise signée':'Signer entreprise'}</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ ${pdf?.signature_locataire_at?'Locataire signé':'Signer locataire'}</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:mode==='poseur'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir le Quitus</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ ${pdf?.signature_locataire_at?'Locataire signé':'Signer locataire'}</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ ${pdf?.signature_entreprise_at?'Entreprise signée':'Signer entreprise'}</button>`:''}</div></div>`:isDemoChantierName(window.currentOpenChantierName)?'<button class="btn" onclick="createUniversalQuitus(\'${l.id}\')">📄 Créer le quitus universel</button><p class="small">Version de test : disponible uniquement sur le chantier DEMO.</p>':'<p class="small">Aucun PDF associé à ce logement.</p>'}
+    <div class="row" style="margin-top:10px"><button class="btn" onclick="${mode==='poseur'?`openPdfPoseur('${pdf.id}','${encodeURIComponent(pdf.storage_path||'')}')`:`openPdf('${pdf.id}')`}">📄 Quitus</button>${mode==='admin'?`<button type="button" class="btn admin-pdf-action" data-admin-pdf-action="fill">✏️ Remplir le Quitus</button><button type="button" class="btn admin-pdf-action" data-admin-pdf-action="signature-entreprise">✍️ ${pdf?.signature_entreprise_at?'Entreprise signée':'Signer entreprise'}</button><button type="button" class="btn admin-pdf-action" data-admin-pdf-action="signature-locataire">✍️ ${pdf?.signature_locataire_at?'Locataire signé':'Signer locataire'}</button><button class="btn danger" onclick="deletePdf('${pdf.id}','${esc(pdf.storage_path)}','${l.id}')">Supprimer</button>`:mode==='poseur'?`<button class="btn" onclick="openFillPdf('${pdf.id}','${l.id}')">✏️ Remplir le Quitus</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','locataire')">✍️ ${pdf?.signature_locataire_at?'Locataire signé':'Signer locataire'}</button><button class="btn" onclick="openSignature('${pdf.id}','${l.id}','entreprise')">✍️ ${pdf?.signature_entreprise_at?'Entreprise signée':'Signer entreprise'}</button>`:''}</div></div>`:isDemoChantierName(window.currentOpenChantierName)?'<button class="btn" onclick="createUniversalQuitus(\'${l.id}\')">📄 Créer le quitus universel</button><p class="small">Version de test : disponible uniquement sur le chantier DEMO.</p>':'<p class="small">Aucun PDF associé à ce logement.</p>'}
     <p class="small">Le fichier est conservé comme PDF original, sans modification ni changement de mise en page.</p>
     <hr><h3>Photos</h3>
     ${mode==='poseur'?`<div class="row">
@@ -675,6 +674,29 @@ async function openLogement(id,mode='poseur'){
     <div id="photoGrid" class="photo-grid">${renderPhotos(photos||[],mode)}</div>
     <hr><div class="validate-box"><h3>📋 État du logement</h3><div class="status-badge ${l.statut==='Terminé'?'status-done':'status-todo'}">${l.statut==='Terminé'?'✅ Logement terminé':'⏳ Logement à faire'}</div>${l.statut==='Terminé'&&l.termine_at?`<div class="done-note">Terminé le ${new Date(l.termine_at).toLocaleString('fr-FR')}</div>`:''}${mode==='poseur'?`<div style="margin-top:12px">${l.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir le logement</button>`:`<button class="btn" onclick="setLogementStatus('${l.id}','Terminé')">✅ Terminer / Valider le logement</button>`}</div><p class="small">À utiliser uniquement lorsque les photos et le dossier du logement sont terminés.</p>`:''}${mode==='admin'&&l.statut==='Terminé'?`<div style="margin-top:12px"><button class="btn secondary" onclick="setLogementStatus('${l.id}','À faire')">↩️ Rouvrir le logement</button></div>`:''}<div id="statusMsg"></div></div>
   </div>`;
+
+  // V58 : gestion directe des 3 boutons PDF en mode ADMIN.
+  // On ne passe pas par onclick inline pour éviter tout blocage du navigateur.
+  if(mode==='admin' && pdf){
+    app.querySelectorAll('.admin-pdf-action').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const action=btn.dataset.adminPdfAction;
+        try{
+          if(action==='fill'){
+            await openFillPdf(pdf.id,l.id);
+          }else if(action==='signature-entreprise'){
+            openSignature(pdf.id,l.id,'entreprise');
+          }else if(action==='signature-locataire'){
+            openSignature(pdf.id,l.id,'locataire');
+          }
+        }catch(e){
+          const msg=document.getElementById('notice');
+          if(msg){msg.className='error';msg.textContent='Erreur : '+(e?.message||e);}
+          else alert(e?.message||e);
+        }
+      });
+    });
+  }
 }
 
 async function setLogementStatus(logementId,status){
@@ -929,8 +951,7 @@ async function applySignature(){
     const now=new Date().toISOString();
     const signatureUpdate={storage_path:signedPath,updated_at:now};
     signatureUpdate[signatureRole==='locataire'?'signature_locataire_at':'signature_entreprise_at']=now;
-    const {error:up}=await supabaseClient.from('pdf_documents').update(signatureUpdate).eq('id',pdf.id);
-    if(up){await supabaseClient.storage.from('glen-documents').remove([signedPath]);throw up;}
+    const {error:up}=await supabaseClient.from('pdf_documents').update(signatureUpdate).eq('id',pdf.id); if(up){await supabaseClient.storage.from('glen-documents').remove([signedPath]);throw up;}
     await supabaseClient.storage.from('glen-documents').remove([pdf.storage_path]);
     msg.className='ok';msg.textContent=`Signature ${label} enregistrée dans le PDF.`;
     const savedLogementId=signatureLogementId;
