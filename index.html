@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="GLEN">
 
 <meta name="theme-color" content="#203a5d">
-<title>GLEN — V69 Correction démarrage</title>
+<title>GLEN — V70 Gestion poseurs</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
@@ -419,7 +419,7 @@ async function chargeAffaireHome(){
   app.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><div><span class="badge">CHARGÉ D’AFFAIRE</span><h2>Mes chantiers</h2></div><button class="btn secondary" onclick="logout()">Déconnexion</button></div>
   <div class="progress-stats"><div><b>${(chantiers||[]).length}</b><span>🏗️ Chantiers</span></div><div><b>${totalAll}</b><span>🏠 Logements</span></div><div><b>${doneAll}</b><span>✅ Terminés</span></div><div><b>${todoAll}</b><span>⏳ À faire</span></div></div>
   <div class="item"><div class="row" style="justify-content:space-between"><b>Avancement global</b><b>${pctAll}%</b></div><div style="height:14px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:8px"><div style="height:100%;width:${pctAll}%;background:#16a34a;border-radius:999px"></div></div></div>
-  <div class="row" style="margin-bottom:14px"><button class="btn" onclick="newChantier()" ${hasPermission('create_chantiers')?'':'disabled'}>+ Nouveau chantier</button>${hasPermission('manage_poseurs')?`<button class="btn secondary" onclick="viewPoseurs()">👷 Voir les poseurs</button>`:''}${hasPermission('manage_admins')?`<button class="btn secondary" onclick="manageAdmins()">👤 Gérer les administrateurs</button>`:''}</div>
+  <div class="row" style="margin-bottom:14px"><button class="btn" onclick="newChantier()" ${hasPermission('create_chantiers')?'':'disabled'}>+ Nouveau chantier</button>${hasPermission('manage_poseurs')?`<button class="btn secondary" onclick="viewPoseurs()">👷 ${hasPermission('create_poseurs')?'Gérer les poseurs':'Voir les poseurs'}</button>`:''}${hasPermission('manage_admins')?`<button class="btn secondary" onclick="manageAdmins()">👤 Gérer les administrateurs</button>`:''}</div>
   ${chantiers?.length?chantiers.map(c=>{const st=stats[c.id]||{total:0,done:0};const todo=st.total-st.done,pct=st.total?Math.round(st.done*100/st.total):0;return `<div class="item"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">🏗️ ${esc(c.nom)}</h3><span class="status-badge ${pct===100&&st.total?'status-done':'status-todo'}">${pct===100&&st.total?'✅ Terminé':'⏳ En cours'}</span></div><p class="small">Créé le ${new Date(c.created_at).toLocaleDateString('fr-FR')}</p><div class="row" style="justify-content:space-between"><span>🏠 ${st.total} logements</span><span>⏳ ${todo} à faire</span><span>✅ ${st.done} terminés</span><b>${pct}%</b></div><div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:8px 0 12px"><div style="height:100%;width:${pct}%;background:#16a34a;border-radius:999px"></div></div><div class="row" style="gap:10px;flex-wrap:wrap"><button class="btn" onclick="openChantier('${c.id}')">Ouvrir le chantier</button><button class="btn danger" onclick="deleteChantier('${c.id}','${esc(c.nom).replace("'","\\'")}')">🗑️ Supprimer le chantier</button></div></div>`;}).join(''):'<p class="small">Aucun chantier ne vous est attribué.</p>'}</div>`;
 }
 
@@ -430,7 +430,7 @@ async function manageChargeAffaires(){
   const ids=(cas||[]).map(x=>x.id); let perms=[];
   if(ids.length){const {data:p,error:pe}=await supabaseClient.from('charge_affaire_permissions').select('*').in('profile_id',ids);if(pe){alert(pe.message);return;}perms=p||[];}
   const pmap=Object.fromEntries(perms.map(x=>[x.profile_id,x]));
-  const defs=[['create_chantiers','Créer des chantiers'],['manage_logements','Gérer les logements'],['manage_poseurs','Voir / affecter les poseurs'],['manage_admins','Gérer les administrateurs'],['view_quitus','Voir le Quitus'],['fill_quitus','Remplir le Quitus'],['sign_entreprise','Signer côté entreprise'],['sign_locataire','Signer côté locataire'],['manage_photos','Gérer les photos'],['manage_comments','Gérer les commentaires'],['view_reports','Voir / exporter les rapports']];
+  const defs=[['create_chantiers','Créer des chantiers'],['manage_logements','Gérer les logements'],['manage_poseurs','Voir / affecter les poseurs'],['create_poseurs','Créer des poseurs'],['manage_admins','Gérer les administrateurs'],['view_quitus','Voir le Quitus'],['fill_quitus','Remplir le Quitus'],['sign_entreprise','Signer côté entreprise'],['sign_locataire','Signer côté locataire'],['manage_photos','Gérer les photos'],['manage_comments','Gérer les commentaires'],['view_reports','Voir / exporter les rapports']];
   app.innerHTML=`<div class="card"><div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button></div><span class="badge">ADMINISTRATEUR</span><h2>👔 Gestion des chargés d’affaire</h2><p class="small">Crée les comptes et attribue les droits individuellement. Les boutons correspondants seront affichés uniquement lorsque le droit est accordé.</p>
   <div class="item"><h3>➕ Nouveau chargé d’affaire</h3><label>Nom / prénom</label><input id="newCaName" type="text" placeholder="Ex. Jean Dupont"><label>Email</label><input id="newCaEmail" type="email" placeholder="charge.affaire@glen.fr"><label>Mot de passe provisoire</label><div class="password-wrap"><input id="newCaPassword" type="password" placeholder="Minimum 6 caractères"><button type="button" class="password-eye" onclick="togglePasswordVisibility('newCaPassword',this)">👁️</button></div><h4>Droits initiaux</h4><div class="ca-permissions-grid">${defs.map(([k,label])=>`<label class="checkbox-field"><input type="checkbox" data-new-ca-perm="${k}"><span>${label}</span></label>`).join('')}</div><button class="btn" onclick="createChargeAffaire()">➕ Créer le chargé d’affaire</button><div id="caCreateMsg"></div></div>
   <div class="item"><h3>👔 Chargés d’affaire existants <span class="poseurs-count">${(cas||[]).length}</span></h3>${(cas||[]).length?(cas||[]).map(c=>{const p=pmap[c.id]||{};return `<div class="item" style="background:#fafcfe"><div class="row" style="justify-content:space-between"><div><b>👔 ${esc(c.full_name||'Chargé d’affaire')}</b><div class="small">${esc(c.email||'')}</div></div><button class="btn" onclick="saveChargeAffairePermissions('${c.id}')">💾 Enregistrer les droits</button></div><div class="ca-permissions-grid" style="margin-top:12px">${defs.map(([k,label])=>`<label class="checkbox-field"><input type="checkbox" data-ca-id="${c.id}" data-ca-perm="${k}" ${p[k]?'checked':''}><span>${label}</span></label>`).join('')}</div></div>`;}).join(''):'<p class="small">Aucun chargé d’affaire.</p>'}</div></div>`;
@@ -522,16 +522,45 @@ async function viewPoseurs(){
   if(!isChargeAffaire() || !hasPermission('manage_poseurs')) return;
   const {data:poseurs,error}=await supabaseClient.from('profiles').select('id,email,full_name').eq('role','poseur').order('email');
   if(error){alert(error.message);return;}
+  const canCreate=hasPermission('create_poseurs');
   app.innerHTML=`<div class="card">
     <div class="row"><button class="btn secondary" onclick="chargeAffaireHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button></div>
     <span class="badge">CHARGÉ D’AFFAIRE</span>
-    <h2>👷 Poseurs disponibles</h2>
-    <p class="small">Les comptes poseurs sont créés et gérés uniquement par l’administrateur. Ici, tu peux seulement consulter les poseurs existants.</p>
+    <h2>👷 Gestion des poseurs</h2>
+    <p class="small">Les poseurs existants peuvent être consultés et affectés aux chantiers. ${canCreate?'Tu as également le droit de créer un nouveau compte poseur.':'La création des comptes poseurs reste réservée à l’administrateur pour ce compte.'}</p>
+    ${canCreate?`<div class="item">
+      <h3>➕ Créer un poseur</h3>
+      <label>Nom / prénom</label><input id="caNewPoseurName" type="text" placeholder="Ex. Damien Dumas" autocomplete="name">
+      <label>Email</label><input id="caNewPoseurEmail" type="email" placeholder="poseur@glen.fr" autocomplete="email">
+      <label>Mot de passe provisoire</label><div class="password-wrap"><input id="caNewPoseurPassword" type="password" placeholder="Minimum 4 caractères" autocomplete="new-password"><button type="button" class="password-eye" onclick="togglePasswordVisibility('caNewPoseurPassword',this)" aria-label="Afficher le mot de passe">👁️</button></div>
+      <button class="btn" onclick="createPoseurFromCharge()">➕ Créer le compte poseur</button>
+      <div id="caPoseurCreateMsg"></div>
+    </div>`:''}
     <div class="item">
       <h3>👷 Poseurs existants <span class="poseurs-count">${(poseurs||[]).length}</span></h3>
       ${(poseurs||[]).length ? (poseurs||[]).map(p=>`<div class="poseur-card"><div class="poseur-info"><div class="poseur-name">👷 ${esc(p.full_name||'Poseur')}</div><div class="small">${esc(p.email||'')}</div></div></div>`).join('') : '<p class="small">Aucun poseur pour le moment.</p>'}
     </div>
   </div>`;
+}
+
+async function createPoseurFromCharge(){
+  if(!requirePermission('create_poseurs','La création des poseurs')) return;
+  const msg=document.getElementById('caPoseurCreateMsg');
+  const full_name=document.getElementById('caNewPoseurName').value.trim();
+  const email=document.getElementById('caNewPoseurEmail').value.trim().toLowerCase();
+  const password=document.getElementById('caNewPoseurPassword').value;
+  if(!full_name){msg.className='error';msg.textContent='Indique le nom / prénom du poseur.';return;}
+  if(!email){msg.className='error';msg.textContent='Indique l’email du poseur.';return;}
+  if(password.length<4){msg.className='error';msg.textContent='Le mot de passe provisoire doit contenir au moins 4 caractères.';return;}
+  msg.className='small';msg.textContent='Création du compte poseur…';
+  const {data,error}=await supabaseClient.functions.invoke('create-poseur-delegated',{body:{email,password,full_name}});
+  if(error){msg.className='error';msg.textContent='Erreur : '+(error.message||error);return;}
+  if(!data?.ok){msg.className='error';msg.textContent='Erreur : '+(data?.error||'Création impossible.');return;}
+  msg.className='ok';msg.textContent='Poseur créé : '+email;
+  document.getElementById('caNewPoseurName').value='';
+  document.getElementById('caNewPoseurEmail').value='';
+  document.getElementById('caNewPoseurPassword').value='';
+  setTimeout(()=>viewPoseurs(),700);
 }
 
 async function managePoseurs(){
@@ -594,6 +623,7 @@ async function deletePoseur(poseurId){
 }
 
 async function createPoseur(){
+  if(currentProfile?.role!=='admin') return;
   const msg=document.getElementById('poseurCreateMsg');
   const full_name=document.getElementById('newPoseurName').value.trim();
   const email=document.getElementById('newPoseurEmail').value.trim().toLowerCase();
@@ -648,7 +678,7 @@ async function openChantier(id){
     return `<div class="item logement-item" data-statut="${x.statut==='Terminé'?'termine':'afaire'}"><div class="row" style="justify-content:space-between;align-items:center"><div>${x.module?`<div class="small" style="font-weight:700;color:#334155;margin-bottom:3px">Module : ${esc(x.module)}</div>`:""}<b>${esc(x.nom||"Logement")}</b></div><span class="status-badge ${x.statut==='Terminé'?'status-done':'status-todo'}">${x.statut==='Terminé'?'✅ Terminé':'⏳ À faire'}</span></div><p>${esc(x.adresse||"")}</p><p class="small">${esc(x.code||"")} ${esc(x.commune||"")} ${x.num_bat?"• Bat "+esc(x.num_bat):""} ${x.num_log?"• Log "+esc(x.num_log):""} ${x.etage?"• Étage "+esc(x.etage):""}</p>${x.statut==='Terminé'?`<p class="done-note">✅ Terminé le ${x.termine_at?new Date(x.termine_at).toLocaleString('fr-FR'):''}${pr?` par ${esc(pr.full_name||pr.email)}`:''}</p>`:''}<div class="row"><button class="btn secondary" onclick="openLogement('${x.id}','${openMode}')">📷 Photos / 📄 PDF</button>${canReports?`<button class="btn" onclick="exportLogementDossier('${x.id}')">📦 Exporter le dossier</button>`:''}${canLogements&&x.statut==='Terminé'?`<button class="btn secondary" onclick="setLogementStatus('${x.id}','À faire')">↩️ Rouvrir</button>`:''}</div></div>`;
   };
   app.innerHTML=`<div class="card">
-    <div class="row" style="align-items:center;display:grid;grid-template-columns:1fr auto 1fr;gap:20px;width:100%"><div style="justify-self:start"><button class="btn secondary" onclick="${back}">← Retour</button></div><div style="justify-self:center">${canReports?`<button class="btn" onclick="exportChantierDossier('${id}')">📦 Exporter le chantier</button>`:''}</div><div style="justify-self:end"><button class="btn secondary" onclick="logout()">Déconnexion</button></div></div>${isChargeAffaire()?`<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn danger" onclick="deleteChantier('${id}','${esc(c.nom).replace("'","\\'")}')">🗑️ Supprimer le chantier</button></div>`:''}
+    <div class="row" style="align-items:center;display:grid;grid-template-columns:1fr auto 1fr;gap:20px;width:100%"><div style="justify-self:start"><button class="btn secondary" onclick="${back}">← Retour</button></div><div></div><div style="justify-self:end"><button class="btn secondary" onclick="logout()">Déconnexion</button></div></div>${isChargeAffaire()?`<div style="display:flex;justify-content:flex-end;margin-top:12px;gap:10px;flex-wrap:wrap"><button class="btn danger" onclick="deleteChantier('${id}','${esc(c.nom).replace("'","\\'")}')">🗑️ Supprimer le chantier</button>${canReports?`<button class="btn" onclick="exportChantierDossier('${id}')">📦 Exporter le chantier</button>`:''}</div>`:canReports?`<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn" onclick="exportChantierDossier('${id}')">📦 Exporter le chantier</button></div>`:''}
     <span class="badge">${isChargeAffaire()?'CHARGÉ D’AFFAIRE':'ADMINISTRATEUR'}</span><h2>${esc(c.nom)}</h2>
     <div class="progress-stats"><div><b>${total}</b><span>Total logements</span></div><div><b>${todo}</b><span>⏳ À faire</span></div><div><b>${done}</b><span>✅ Terminés</span></div></div>
     <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">Logements</h3>${canLogements?`<div class="row"><button class="btn" onclick="createManualLogement('${id}')">➕ Créer un client</button><label class="btn" style="display:inline-block;text-align:center">📥 Importer Excel<input id="excelInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewExcel('${id}',this.files[0])"></label></div>`:''}</div>
