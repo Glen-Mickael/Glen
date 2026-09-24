@@ -110,6 +110,15 @@ hr{border:0;border-top:1px solid #e2e7eb;margin:20px 0}
 .poseur-card{display:flex;align-items:center;gap:14px;padding:13px 14px;border:1px solid #dce3e9;border-radius:13px;background:#fff}
 .poseur-card:hover{background:#f8fafc}
 .poseurSelect{width:20px!important;height:20px!important;flex:0 0 auto!important;margin:0!important}
+.poseur-picker{position:relative;margin:10px 0}
+.poseur-picker-button{width:100%;padding:13px 44px 13px 13px;border:1px solid #cbd5df;border-radius:10px;background:#fff;text-align:left;font:inherit;color:#203a5d;cursor:pointer;position:relative}
+.poseur-picker-button:after{content:"▾";position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:18px}
+.poseur-picker-menu{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:50;background:#fff;border:1px solid #cbd5df;border-radius:10px;box-shadow:0 8px 22px rgba(15,23,42,.15);max-height:280px;overflow-y:auto;padding:5px}
+.poseur-picker-menu.open{display:block}
+.poseur-picker-option{display:block;width:100%;padding:11px 12px;border:0;border-radius:8px;background:#fff;text-align:left;font:inherit;color:#203a5d;cursor:pointer}
+.poseur-picker-option:hover{background:#eef4f9}
+.poseur-picker-option.selected{background:#e8f1f8;font-weight:700}
+
 .poseur-info{flex:1;min-width:0}
 .poseur-name{font-weight:700;font-size:17px;margin-bottom:3px}
 .poseur-delete-one{white-space:nowrap;background:#c62828!important;padding:10px 14px!important}
@@ -528,7 +537,7 @@ function sortPoseursAlphabetiquement(list){
 
 async function viewPoseurs(){
   if(!isChargeAffaire() || !hasPermission('manage_poseurs')) return;
-  const {data:poseurs,error}=await supabaseClient.from('profiles').select('id,email,full_name').eq('role','poseur').range(0,9999);
+  const {data:poseurs,error}=await fetchAllPoseurs();
   if(error){alert(error.message);return;}
   const poseursTries=sortPoseursAlphabetiquement(poseurs);
   const canCreate=hasPermission('create_poseurs');
@@ -675,7 +684,7 @@ async function openChantier(id){
   let a=[],p=[];
   if(canPoseurs){
     const ar=await supabaseClient.from("chantier_poseurs").select("poseur_id, profiles(id,email,full_name)").eq("chantier_id",id); a=(ar.data||[]).slice().sort((x,y)=>{ const nx=(x.profiles?.full_name||x.profiles?.email||'').trim(); const ny=(y.profiles?.full_name||y.profiles?.email||'').trim(); return nx.localeCompare(ny,'fr',{sensitivity:'base',numeric:true}); });
-    const pr=await supabaseClient.from("profiles").select("id,email,full_name").eq("role","poseur").range(0,9999); p=sortPoseursAlphabetiquement(pr.data||[]);
+    const pr=await fetchAllPoseurs(); p=sortPoseursAlphabetiquement(pr.data||[]);
   }
   const total=(l||[]).length, done=(l||[]).filter(x=>x.statut==='Terminé').length, todo=total-done;
   const poseurIds=[...(new Set((l||[]).map(x=>x.termine_par).filter(Boolean)))];
@@ -696,13 +705,46 @@ async function openChantier(id){
     <p class="small">Les logements de ce chantier sont associés à <b>${esc(c.nom)}</b>.</p>
     <div id="logementsList">${l?.length?l.map(logementHtml).join(""):"<p class='small'>Aucun logement pour le moment.</p>"}</div>
     <div id="importArea"></div>
-    ${canPoseurs?`<hr><h3>👷 Poseurs du chantier</h3><p class="small">Les comptes poseurs sont créés uniquement par l’administrateur. Ici, le chargé d’affaire peut seulement sélectionner, affecter ou retirer un poseur de son chantier.</p><div class="item"><b>Poseurs affectés</b>${a?.length?a.map(x=>`<div style="margin-top:12px;padding:12px;border:1px solid #dce3e9;border-radius:12px"><div style="font-weight:700">👷 ${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}</div>${x.profiles?.full_name?`<div class="small">${esc(x.profiles.email||"")}</div>`:""}<button class="btn danger" style="margin-top:10px;padding:9px 12px;font-size:14px" onclick="removePoseur('${id}','${x.poseur_id}')">❌ Retirer ce poseur</button></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div><div class="item"><b>Ajouter un poseur</b><select id="poseurSelect" style="width:100%;padding:13px;border:1px solid #cbd5df;border-radius:10px;margin:10px 0"><option value="">Choisir un poseur</option>${p?.filter(x=>!(a||[]).some(y=>y.poseur_id===x.id)).map(x=>`<option value="${x.id}">${esc(x.full_name||x.email)}${x.full_name&&x.email?` — ${esc(x.email)}`:""}</option>`).join("")}</select><button class="btn" onclick="assignPoseur('${id}')">➕ Affecter le poseur</button></div>`:''}
+    ${canPoseurs?`<hr><h3>👷 Poseurs du chantier</h3><p class="small">Les comptes poseurs sont créés uniquement par l’administrateur. Ici, le chargé d’affaire peut seulement sélectionner, affecter ou retirer un poseur de son chantier.</p><div class="item"><b>Poseurs affectés</b>${a?.length?a.map(x=>`<div style="margin-top:12px;padding:12px;border:1px solid #dce3e9;border-radius:12px"><div style="font-weight:700">👷 ${esc(x.profiles?.full_name||x.profiles?.email||"Poseur")}</div>${x.profiles?.full_name?`<div class="small">${esc(x.profiles.email||"")}</div>`:""}<button class="btn danger" style="margin-top:10px;padding:9px 12px;font-size:14px" onclick="removePoseur('${id}','${x.poseur_id}')">❌ Retirer ce poseur</button></div>`).join(""):"<p class='small'>Aucun poseur affecté.</p>"}</div><div class="item"><b>Ajouter un poseur</b>${(()=>{const disponibles=(p||[]).filter(x=>!(a||[]).some(y=>y.poseur_id===x.id));return `<div class="small" style="margin-top:6px">${disponibles.length} poseur${disponibles.length>1?'s':''} disponible${disponibles.length>1?'s':''}</div><div class="poseur-picker"><input type="hidden" id="poseurSelect" value=""><button type="button" id="poseurPickerButton" class="poseur-picker-button" onclick="togglePoseurPicker()">Choisir un poseur</button><div id="poseurPickerMenu" class="poseur-picker-menu">${disponibles.length?disponibles.map(x=>`<button type="button" class="poseur-picker-option" data-poseur-id="${x.id}" data-poseur-name="${esc(x.full_name||x.email||'Poseur')}" onclick="selectPoseurOption('${x.id}',this.dataset.poseurName)">${esc(x.full_name||x.email||'Poseur')}</button>`).join(''):'<div class="small" style="padding:12px">Aucun poseur disponible.</div>'}</div></div><button class="btn" onclick="assignPoseur('${id}')">➕ Affecter le poseur</button>`})()}</div>`:''}
   </div>`;
 }
 function filterLogements(filter,btn){
   document.querySelectorAll('.logement-item').forEach(el=>{el.style.display=(filter==='tous'||el.dataset.statut===filter)?'':'none';});
   document.querySelectorAll('.filter-btn').forEach(b=>{b.classList.remove('active');b.classList.add('secondary');});
   if(btn){btn.classList.remove('secondary');btn.classList.add('active');}
+}
+
+function togglePoseurPicker(){
+  const menu=document.getElementById("poseurPickerMenu");
+  if(!menu) return;
+  menu.classList.toggle("open");
+}
+
+function selectPoseurOption(id,name){
+  const input=document.getElementById("poseurSelect");
+  const button=document.getElementById("poseurPickerButton");
+  const menu=document.getElementById("poseurPickerMenu");
+  if(input) input.value=id||"";
+  if(button) button.textContent=name||"Choisir un poseur";
+  if(menu){
+    menu.querySelectorAll(".poseur-picker-option").forEach(el=>el.classList.remove("selected"));
+    const chosen=menu.querySelector('[data-poseur-id="'+CSS.escape(id||"")+'"]');
+    if(chosen) chosen.classList.add("selected");
+    menu.classList.remove("open");
+  }
+}
+
+async function fetchAllPoseurs(){
+  const all=[];
+  const pageSize=1000;
+  for(let from=0;;from+=pageSize){
+    const {data,error}=await supabaseClient.from("profiles").select("id,email,full_name").eq("role","poseur").order("full_name",{ascending:true}).range(from,from+pageSize-1);
+    if(error) return {data:all,error};
+    const rows=data||[];
+    all.push(...rows);
+    if(rows.length<pageSize) break;
+  }
+  return {data:all,error:null};
 }
 
 async function assignPoseur(chantierId){
