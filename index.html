@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="GLEN">
 
 <meta name="theme-color" content="#203a5d">
-<title>GLEN — V65 Chargés d’affaire</title>
+<title>GLEN — V69 Correction démarrage</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f3f6f8;color:#18212b}
 header{background:#203a5d;color:white;padding:28px 22px 24px}header h1{margin:0;font-size:34px}header p{margin:6px 0 0;opacity:.85}
@@ -158,10 +158,23 @@ async function init(){
     <p class="small">Après création du projet Supabase, remplace les deux valeurs indiquées dans le fichier index.html.</p>`);
     return;
   }
-  supabaseClient = window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
-  const {data:{session}} = await supabaseClient.auth.getSession();
-  if(session) await loadProfile();
-  else loginView();
+  try{
+    supabaseClient = window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+    const {data,error}=await supabaseClient.auth.getSession();
+    if(error){
+      console.error('Erreur récupération session Supabase:',error);
+      loginView('Impossible de récupérer la session Supabase : '+error.message);
+      return;
+    }
+    if(data?.session){
+      await loadProfile(true);
+    }else{
+      loginView();
+    }
+  }catch(e){
+    console.error('Erreur démarrage GLEN:',e);
+    loginView('Erreur de démarrage : '+(e?.message||e));
+  }
 }
 
 function togglePasswordVisibility(id,btn){
@@ -270,41 +283,90 @@ async function saveLogementComment(logementId){
     }
   }
 }
-function loginView(){
+function loginView(message=''){
   app.innerHTML=`<div class="card">
     <h2>Connexion</h2>
     <label>Email</label><input id="email" type="email" autocomplete="username">
     <label>Mot de passe</label><div class="password-wrap"><input id="password" type="password" autocomplete="current-password"><button type="button" class="password-eye" onclick="togglePasswordVisibility('password',this)" aria-label="Afficher le mot de passe">👁️</button></div>
     <button class="btn" onclick="login()">Se connecter</button>
-    <div id="msg"></div>
+    <div id="msg" class="${message?'error':''}">${message?esc(message):''}</div>
   </div>`;
 }
 async function login(){
   const msg=document.getElementById("msg");
+  if(!msg)return;
   msg.className="";
-  const {error}=await supabaseClient.auth.signInWithPassword({
-    email:document.getElementById("email").value.trim(),
-    password:document.getElementById("password").value
-  });
-  if(error){msg.className="error";msg.textContent="Connexion impossible : "+error.message;return;}
-  await loadProfile();
-}
-async function logout(){await supabaseClient.auth.signOut();currentProfile=null;loginView();}
-
-async function loadProfile(){
-  const user=(await supabaseClient.auth.getUser()).data.user;
-  const {data,error}=await supabaseClient.from("profiles").select("*").eq("id",user.id).single();
-  if(error){set("Profil introuvable. Vérifie que le compte existe dans Supabase et qu'il a bien une ligne dans profiles.","error");return;}
-  currentProfile=data; currentPermissions={};
-  if(currentProfile.role==='charge_affaire'){
-    const {data:perm, error:pe}=await supabaseClient.from('charge_affaire_permissions').select('*').eq('profile_id',user.id).maybeSingle();
-    if(pe){set('Erreur chargement des droits : '+esc(pe.message),'error');return;}
-    currentPermissions=perm||{};
-    return chargeAffaireHome();
+  msg.textContent="Connexion en cours…";
+  try{
+    const email=document.getElementById("email")?.value.trim()||'';
+    const password=document.getElementById("password")?.value||'';
+    const {error}=await supabaseClient.auth.signInWithPassword({email,password});
+    if(error){
+      msg.className="error";
+      msg.textContent="Connexion impossible : "+error.message;
+      return;
+    }
+    msg.className="ok";
+    msg.textContent="Connexion réussie. Chargement du profil…";
+    await loadProfile(false);
+  }catch(e){
+    console.error('Erreur connexion GLEN:',e);
+    msg.className="error";
+    msg.textContent="Erreur de connexion : "+(e?.message||e);
   }
-  return currentProfile.role==='admin' ? adminHome() : poseurHome();
 }
+async function logout(){await supabaseClient.auth.signOut();currentProfile=null;currentPermissions={};loginView();}
 
+async function loadProfile(fromExistingSession=false){
+  try{
+    const {data:userData,error:userError}=await supabaseClient.auth.getUser();
+    const user=userData?.user;
+    if(userError || !user){
+      console.error('Session utilisateur invalide:',userError);
+      if(fromExistingSession) await supabaseClient.auth.signOut();
+      loginView(userError ? 'Session expirée ou invalide. Veuillez vous reconnecter.' : 'Aucune session active. Veuillez vous connecter.');
+      return false;
+    }
+
+    const {data,error}=await supabaseClient.from("profiles").select("*").eq("id",user.id).maybeSingle();
+    if(error){
+      console.error('Erreur lecture profiles:',error);
+      await supabaseClient.auth.signOut();
+      currentProfile=null;
+      currentPermissions={};
+      loginView('Impossible de charger le profil : '+error.message+'\nVeuillez vous reconnecter.');
+      return false;
+    }
+    if(!data){
+      console.error('Aucun profil trouvé pour',user.id,user.email);
+      await supabaseClient.auth.signOut();
+      currentProfile=null;
+      currentPermissions={};
+      loginView('Aucun profil GLEN trouvé pour ce compte. Vérifie le compte dans Supabase.');
+      return false;
+    }
+
+    currentProfile=data; currentPermissions={};
+    if(currentProfile.role==='charge_affaire'){
+      const {data:perm, error:pe}=await supabaseClient.from('charge_affaire_permissions').select('*').eq('profile_id',user.id).maybeSingle();
+      if(pe){
+        console.error('Erreur chargement droits:',pe);
+        set('Erreur chargement des droits : '+esc(pe.message),'error');
+        return false;
+      }
+      currentPermissions=perm||{};
+      return chargeAffaireHome();
+    }
+    return currentProfile.role==='admin' ? adminHome() : poseurHome();
+  }catch(e){
+    console.error('Erreur loadProfile:',e);
+    await supabaseClient.auth.signOut().catch(()=>{});
+    currentProfile=null;
+    currentPermissions={};
+    loginView('Erreur lors du chargement du profil : '+(e?.message||e)+'\nVeuillez vous reconnecter.');
+    return false;
+  }
+}
 async function adminHome(){
   const {data:chantiers,error}=await supabaseClient.from("chantiers").select("*").order("created_at",{ascending:false});
   if(error){set("Erreur : "+esc(error.message),"error");return;}
