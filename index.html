@@ -518,10 +518,19 @@ async function createAdmin(){
   setTimeout(()=>manageAdmins(),700);
 }
 
+function sortPoseursAlphabetiquement(list){
+  return (list||[]).slice().sort((a,b)=>{
+    const na=(a.full_name||a.email||'').trim();
+    const nb=(b.full_name||b.email||'').trim();
+    return na.localeCompare(nb,'fr',{sensitivity:'base',numeric:true});
+  });
+}
+
 async function viewPoseurs(){
   if(!isChargeAffaire() || !hasPermission('manage_poseurs')) return;
-  const {data:poseurs,error}=await supabaseClient.from('profiles').select('id,email,full_name').eq('role','poseur').order('email');
+  const {data:poseurs,error}=await supabaseClient.from('profiles').select('id,email,full_name').eq('role','poseur');
   if(error){alert(error.message);return;}
+  const poseursTries=sortPoseursAlphabetiquement(poseurs);
   const canCreate=hasPermission('create_poseurs');
   app.innerHTML=`<div class="card">
     <div class="row"><button class="btn secondary" onclick="chargeAffaireHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button></div>
@@ -537,8 +546,8 @@ async function viewPoseurs(){
       <div id="caPoseurCreateMsg"></div>
     </div>`:''}
     <div class="item">
-      <h3>👷 Poseurs existants <span class="poseurs-count">${(poseurs||[]).length}</span></h3>
-      ${(poseurs||[]).length ? (poseurs||[]).map(p=>`<div class="poseur-card"><div class="poseur-info"><div class="poseur-name">👷 ${esc(p.full_name||'Poseur')}</div><div class="small">${esc(p.email||'')}</div></div></div>`).join('') : '<p class="small">Aucun poseur pour le moment.</p>'}
+      <h3>👷 Poseurs existants <span class="poseurs-count">${poseursTries.length}</span></h3>
+      ${poseursTries.length ? poseursTries.map(p=>`<div class="poseur-card"><div class="poseur-info"><div class="poseur-name">👷 ${esc(p.full_name||'Poseur')}</div><div class="small">${esc(p.email||'')}</div></div></div>`).join('') : '<p class="small">Aucun poseur pour le moment.</p>'}
     </div>
   </div>`;
 }
@@ -565,8 +574,9 @@ async function createPoseurFromCharge(){
 
 async function managePoseurs(){
   if(!requirePermission('manage_poseurs','La gestion des poseurs')) return;
-  const {data:poseurs,error}=await supabaseClient.from('profiles').select('id,email,full_name,created_at').eq('role','poseur').order('email');
+  const {data:poseurs,error}=await supabaseClient.from('profiles').select('id,email,full_name,created_at').eq('role','poseur');
   if(error){alert(error.message);return;}
+  const poseursTries=sortPoseursAlphabetiquement(poseurs);
   app.innerHTML=`<div class="card">
     <div class="row"><button class="btn secondary" onclick="adminHome()">← Retour</button><button class="btn secondary" onclick="logout()">Déconnexion</button></div>
     <span class="badge">ADMINISTRATEUR</span>
@@ -582,12 +592,12 @@ async function managePoseurs(){
     </div>
     <div class="item poseurs-box">
       <div class="poseurs-header">
-        <h3>👷 Poseurs existants <span class="poseurs-count">${(poseurs||[]).length}</span></h3>
+        <h3>👷 Poseurs existants <span class="poseurs-count">${poseursTries.length}</span></h3>
         <button class="btn danger poseurs-delete-all" onclick="deleteSelectedPoseurs()">🗑️ Supprimer la sélection</button>
       </div>
       <label class="select-all-poseurs"><input type="checkbox" id="selectAllPoseurs" onchange="toggleAllPoseurs(this.checked)"><span>Sélectionner tous</span></label>
       <div class="poseurs-list">
-      ${(poseurs||[]).length ? (poseurs||[]).map(p=>`<div class="poseur-card"><input type="checkbox" class="poseurSelect" value="${p.id}"><div class="poseur-info"><div class="poseur-name">👷 ${esc(p.full_name||'Poseur')}</div><div class="small">${esc(p.email||'')}</div></div><button class="btn danger poseur-delete-one" onclick="deletePoseur('${p.id}')">🗑️ Supprimer</button></div>`).join('') : '<p class="small">Aucun poseur pour le moment.</p>'}
+      ${poseursTries.length ? poseursTries.map(p=>`<div class="poseur-card"><input type="checkbox" class="poseurSelect" value="${p.id}"><div class="poseur-info"><div class="poseur-name">👷 ${esc(p.full_name||'Poseur')}</div><div class="small">${esc(p.email||'')}</div></div><button class="btn danger poseur-delete-one" onclick="deletePoseur('${p.id}')">🗑️ Supprimer</button></div>`).join('') : '<p class="small">Aucun poseur pour le moment.</p>'}
       </div>
     </div>
     <div class="item" style="background:#fff8e6"><b>🔐 Sécurité</b><p class="small">La création et la suppression des comptes passent par des fonctions sécurisées Supabase. La clé secrète n'est jamais envoyée au navigateur.</p></div>
@@ -664,8 +674,8 @@ async function openChantier(id){
   const canReports=hasPermission('view_reports');
   let a=[],p=[];
   if(canPoseurs){
-    const ar=await supabaseClient.from("chantier_poseurs").select("poseur_id, profiles(id,email,full_name)").eq("chantier_id",id); a=ar.data||[];
-    const pr=await supabaseClient.from("profiles").select("id,email,full_name").eq("role","poseur").order("email"); p=pr.data||[];
+    const ar=await supabaseClient.from("chantier_poseurs").select("poseur_id, profiles(id,email,full_name)").eq("chantier_id",id); a=(ar.data||[]).slice().sort((x,y)=>{ const nx=(x.profiles?.full_name||x.profiles?.email||'').trim(); const ny=(y.profiles?.full_name||y.profiles?.email||'').trim(); return nx.localeCompare(ny,'fr',{sensitivity:'base',numeric:true}); });
+    const pr=await supabaseClient.from("profiles").select("id,email,full_name").eq("role","poseur"); p=sortPoseursAlphabetiquement(pr.data||[]);
   }
   const total=(l||[]).length, done=(l||[]).filter(x=>x.statut==='Terminé').length, todo=total-done;
   const poseurIds=[...(new Set((l||[]).map(x=>x.termine_par).filter(Boolean)))];
