@@ -376,6 +376,33 @@ async function loadProfile(fromExistingSession=false){
     return false;
   }
 }
+async function filterAdminChantiers(mode){
+  const data=window.__glenAdminChantiersData;
+  if(!data)return;
+  const {chantiers,stats,caMap,currentUserId}=data;
+  let filtered=chantiers||[];
+  if(mode==='mine') filtered=filtered.filter(c=>c.created_by===currentUserId && !c.charge_affaire_id);
+  else if(mode==='ca') filtered=filtered.filter(c=>!!c.charge_affaire_id);
+  else if(mode && mode.startsWith('ca:')) filtered=filtered.filter(c=>c.charge_affaire_id===mode.slice(3));
+  const list=document.getElementById('adminChantiersList');
+  const count=document.getElementById('adminFilterCount');
+  if(count)count.textContent=`${filtered.length} chantier${filtered.length>1?'s':''}`;
+  if(!list)return;
+  list.innerHTML=filtered.length?filtered.map(c=>{
+    const st=stats[c.id]||{total:0,done:0};
+    const todo=st.total-st.done,pct=st.total?Math.round(st.done*100/st.total):0;
+    const ca=c.charge_affaire_id?caMap[c.charge_affaire_id]:null;
+    const owner=ca?`👔 ${esc(ca.full_name||ca.email||'Chargé d’affaire')}`:'👤 Mon chantier';
+    return `<div class="item">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px"><div><h3 style="margin:0">${esc(c.nom)}</h3><span class="small" style="font-weight:700">${owner}</span></div><span class="status-badge ${pct===100&&st.total?'status-done':'status-todo'}">${pct===100&&st.total?'✅ Terminé':'⏳ En cours'}</span></div>
+      <p class="small">Créé le ${new Date(c.created_at).toLocaleDateString('fr-FR')}</p>
+      <div class="row" style="justify-content:space-between"><span>🏠 ${st.total} logements</span><span>✅ ${st.done} terminés</span><span>⏳ ${todo} à faire</span><b>${pct}%</b></div>
+      <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:8px 0 12px"><div style="height:100%;width:${pct}%;background:#16a34a;border-radius:999px"></div></div>
+      <div class="row" style="gap:10px;flex-wrap:wrap"><button class="btn" onclick="openChantier('${c.id}')">Ouvrir le chantier</button><button class="btn danger" onclick="deleteChantier('${c.id}','${esc(c.nom).replace("'","\\'")}')">🗑️ Supprimer le chantier</button><button class="btn" onclick="exportChantierDossier('${c.id}')">📦 Exporter le chantier</button></div>
+    </div>`;
+  }).join(''):'<p class="small">Aucun chantier dans ce filtre.</p>';
+}
+
 async function adminHome(){
   const {data:chantiers,error}=await supabaseClient.from("chantiers").select("*").order("created_at",{ascending:false});
   if(error){set("Erreur : "+esc(error.message),"error");return;}
@@ -386,11 +413,21 @@ async function adminHome(){
     if(le){set("Erreur : "+esc(le.message),"error");return;}
     logements=l||[];
   }
+  const caIds=[...new Set((chantiers||[]).map(c=>c.charge_affaire_id).filter(Boolean))];
+  let caMap={};
+  if(caIds.length){
+    const {data:cas,error:ce}=await supabaseClient.from('profiles').select('id,email,full_name').in('id',caIds);
+    if(ce){set('Erreur : '+esc(ce.message),'error');return;}
+    (cas||[]).forEach(x=>caMap[x.id]=x);
+  }
+  const currentUser=(await supabaseClient.auth.getUser()).data.user;
   const stats={};
   (chantiers||[]).forEach(c=>{stats[c.id]={total:0,done:0};});
   logements.forEach(l=>{if(!stats[l.chantier_id])stats[l.chantier_id]={total:0,done:0};stats[l.chantier_id].total++;if(l.statut==='Terminé')stats[l.chantier_id].done++;});
   const totalAll=logements.length, doneAll=logements.filter(x=>x.statut==='Terminé').length, todoAll=totalAll-doneAll;
   const pctAll=totalAll?Math.round(doneAll*100/totalAll):0;
+  window.__glenAdminChantiersData={chantiers:chantiers||[],stats,caMap,currentUserId:currentUser?.id||''};
+  const caOptions=caIds.map(id=>{const ca=caMap[id];return ca?`<option value="ca:${id}">👔 ${esc(ca.full_name||ca.email||'Chargé d’affaire')}</option>`:'';}).join('');
   app.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between">
     <div><span class="badge">ADMINISTRATEUR</span><h2>Mes chantiers</h2></div>
     <button class="btn secondary" onclick="logout()">Déconnexion</button>
@@ -398,14 +435,11 @@ async function adminHome(){
   <div class="progress-stats"><div><b>${(chantiers||[]).length}</b><span>🏗️ Chantiers</span></div><div><b>${totalAll}</b><span>🏠 Logements</span></div><div><b>${doneAll}</b><span>✅ Terminés</span></div><div><b>${todoAll}</b><span>⏳ À faire</span></div></div>
   <div class="item" style="margin-bottom:16px"><div class="row" style="justify-content:space-between"><b>Avancement global</b><b>${pctAll}%</b></div><div style="height:14px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:8px"><div style="height:100%;width:${pctAll}%;background:#16a34a;border-radius:999px"></div></div><p class="small">${doneAll} logement${doneAll>1?'s':''} terminé${doneAll>1?'s':''} sur ${totalAll}</p></div>
   <div class="row" style="margin-bottom:14px;flex-wrap:wrap"><button class="btn" onclick="newChantier()">+ Nouveau chantier</button><button class="btn secondary" onclick="managePoseurs()">👷 Gérer les poseurs</button><button class="btn secondary" onclick="manageAdmins()">👤 Gérer les administrateurs</button><button class="btn secondary" onclick="manageChargeAffaires()">👔 Gérer les chargés d’affaire</button></div>
-  <div id="list">${chantiers?.length?chantiers.map(c=>{const s=stats[c.id]||{total:0,done:0};const todo=s.total-s.done;const pct=s.total?Math.round(s.done*100/s.total):0;return `<div class="item">
-    <div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">${esc(c.nom)}</h3><span class="status-badge ${pct===100&&s.total?'status-done':'status-todo'}">${pct===100&&s.total?'✅ Terminé':'⏳ En cours'}</span></div>
-    <p class="small">Créé le ${new Date(c.created_at).toLocaleDateString("fr-FR")}</p>
-    <div class="row" style="justify-content:space-between"><span>🏠 ${s.total} logements</span><span>✅ ${s.done} terminés</span><span>⏳ ${todo} à faire</span><b>${pct}%</b></div>
-    <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:8px 0 12px"><div style="height:100%;width:${pct}%;background:#16a34a;border-radius:999px"></div></div>
-    <div class="row" style="gap:10px;flex-wrap:wrap"><button class="btn" onclick="openChantier('${c.id}')">Ouvrir le chantier</button><button class="btn danger" onclick="deleteChantier('${c.id}','${esc(c.nom).replace("'","\\'")}')">🗑️ Supprimer le chantier</button><button class="btn" onclick="exportChantierDossier('${c.id}')">📦 Exporter le chantier</button></div>
-  </div>`;}).join(""):"<p class='small'>Aucun chantier créé.</p>"}</div></div>`;
+  <div class="item" style="margin-bottom:16px;background:#f8fafc"><div class="row" style="align-items:center;gap:12px;flex-wrap:wrap"><b>🔎 Afficher les chantiers :</b><select id="adminChantierFilter" onchange="filterAdminChantiers(this.value)" style="min-width:260px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;font-size:16px"><option value="all">📋 Tous les chantiers</option><option value="mine">👤 Mes chantiers</option><option value="ca">👔 Chantiers des chargés d’affaire</option>${caOptions}</select><span id="adminFilterCount" class="small">${(chantiers||[]).length} chantier${(chantiers||[]).length>1?'s':''}</span></div><p class="small" style="margin-bottom:0">Les chantiers des chargés d’affaire sont identifiés par 👔. Les tiens par 👤.</p></div>
+  <div id="adminChantiersList"></div></div>`;
+  filterAdminChantiers('all');
 }
+
 async function deleteChantier(chantierId, chantierNom){
   if(!confirm('Supprimer le chantier « '+chantierNom+' » ?\n\nCette action supprimera définitivement le chantier, ses logements et leurs affectations aux poseurs.')) return;
   const {error}=await supabaseClient.from('chantiers').delete().eq('id',chantierId);
