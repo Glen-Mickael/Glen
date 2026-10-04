@@ -24,7 +24,8 @@ window.addEventListener('message',event=>{
     showWorkspaceChooser();
   }
 });
-applyWorkspaceRole(localStorage.getItem('gm_workspace_role'));
+// Toujours commencer par l'écran de connexion : aucun accès direct au choix des applications tant que la connexion n'est pas validée.
+localStorage.removeItem('gm_workspace_role');
 async function restoreWorkspaceRole(){try{const s=JSON.parse(localStorage.getItem('sb-vmhqbywplgahrxozroit-auth-token')||'null');const id=s?.user?.id,token=s?.access_token;if(!id||!token)return;const r=await fetch('https://vmhqbywplgahrxozroit.supabase.co/rest/v1/profiles?select=role&id=eq.'+encodeURIComponent(id),{headers:{apikey:'sb_publishable_KQHZK6sX5B4OHDo7UYHu1Q_iKsKsSf2',Authorization:'Bearer '+token}});if(!r.ok)return;const rows=await r.json();if(rows?.[0]?.role)applyWorkspaceRole(rows[0].role)}catch(e){console.warn('Rôle enregistré indisponible',e)}}
 restoreWorkspaceRole();
 async function disconnectAccount(){
