@@ -435,6 +435,10 @@ function startPortalLogin(){
   f.style.display='none';
   f.srcdoc=APP_DOCS['multiservice'];
 }
-if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+if('serviceWorker' in navigator&&location.protocol==='https:'){
+ const startup=Date.now();let refreshing=false;
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(refreshing||Date.now()-startup>15000)return;const key='glen_worker_refresh_v182';if(sessionStorage.getItem(key))return;sessionStorage.setItem(key,'1');refreshing=true;location.reload();});
+ window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(reg=>reg.update()).catch(()=>{}));
+}
 window.addEventListener('load',()=>setTimeout(startPortalLogin,0));
 </script></body></html>
