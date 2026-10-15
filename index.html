@@ -200,13 +200,9 @@ async function portalSaveVerifiedPassword(email,password){
  try{await navigator.credentials.store(new PasswordCredential({id:email,password}));}catch(error){/* Aucun blocage de connexion si le navigateur refuse l’enregistrement. */}
 }
 async function ensurePortalClerk(){
-  if(portalClerkReady)return portalClerkReady;
-  portalClerkReady=(async()=>{
-    if(!window.Clerk)throw new Error('Le SDK Clerk principal n’est pas chargé.');
-    await window.Clerk.load();
-    return window.Clerk;
-  })();
-  return portalClerkReady;
+ if(portalClerkReady)return portalClerkReady;
+ portalClerkReady=(async()=>{for(let n=0;!window.Clerk&&n<200;n++)await new Promise(resolve=>setTimeout(resolve,100));if(!window.Clerk)throw new Error('Le service de connexion tarde à répondre. Vérifie Internet puis réessaie.');await window.Clerk.load();return window.Clerk;})();
+ try{return await portalClerkReady;}catch(error){portalClerkReady=null;throw error;}
 }
 async function portalClerkToken(forceRefresh=false){
   const Clerk=await ensurePortalClerk();
@@ -440,5 +436,8 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(refreshing||Date.now()-startup>15000)return;const key='glen_worker_refresh_v182';if(sessionStorage.getItem(key))return;sessionStorage.setItem(key,'1');refreshing=true;location.reload();});
  window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(reg=>reg.update()).catch(()=>{}));
 }
-window.addEventListener('load',()=>setTimeout(startPortalLogin,0));
+let portalStarted185=false;
+function portalStart185(){if(portalStarted185)return;portalStarted185=true;try{startPortalLogin();const status=document.getElementById('portalLoginStatus');if(status)status.textContent='Préparation de la connexion…';setTimeout(()=>{if(!awaitingPortalLogin||portalLoginFrameReady)return;const status=document.getElementById('portalLoginStatus');if(status){status.textContent='La connexion tarde à démarrer. ';const button=document.createElement('button');button.type='button';button.textContent='Réessayer';button.onclick=()=>{portalClerkReady=null;startPortalLogin();};status.appendChild(button);}},15000);}catch(error){const panel=document.createElement('div');panel.style.cssText='padding:30px;background:white';panel.textContent='Démarrage impossible. Vérifie ta connexion Internet puis rouvre GLEN.';document.body.appendChild(panel);}}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',portalStart185,{once:true});else portalStart185();
+window.addEventListener('pageshow',()=>{if(!document.getElementById('portalLoginPanel')&&!document.body.classList.contains('active'))portalStart185();});
 </script></body></html>
