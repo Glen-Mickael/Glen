@@ -1,4 +1,4 @@
-const CACHE='glen-shell-v266';
+const CACHE='glen-shell-v267';
 self.addEventListener('install',event=>event.waitUntil((async()=>{const cache=await caches.open(CACHE);const url=new URL('./index.html',self.registration.scope).href;const response=await fetch(url,{cache:'reload'});if(!response.ok)throw Error('Application non téléchargée');await cache.put(url,response);await self.skipWaiting();})()));
 self.addEventListener('activate',event=>event.waitUntil((async()=>{await self.clients.claim();})()));
 self.addEventListener('fetch',event=>{const req=event.request,url=new URL(req.url);if(req.method!=='GET'||url.origin!==self.location.origin||!url.pathname.startsWith(new URL(self.registration.scope).pathname)||req.mode!=='navigate')return;
