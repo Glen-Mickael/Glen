@@ -487,7 +487,7 @@ function portalOfflineSubmit63(){const status=document.getElementById('portalLog
 function offNet63(){try{return document.getElementById('frame')?.contentWindow?.glenNet63||null;}catch(e){return null;}}
 function offBadge63(){
  let el=document.getElementById('glenNet63');
- if(!el){el=document.createElement('button');el.type='button';el.id='glenNet63';el.title='Voir les envois et le journal';el.onclick=offJournal63;el.style.cssText='position:fixed;right:12px;bottom:64px;z-index:2147483002;padding:6px 12px;border:2px solid #fff;border-radius:14px;font:bold 13px Arial;color:#fff;box-shadow:0 1px 6px #0004;cursor:pointer';document.body.appendChild(el);}
+ if(!el){el=document.createElement('button');el.type='button';el.id='glenNet63';el.title='Voir les envois et le journal';el.onclick=offJournal63;el.style.cssText='position:fixed;left:12px;bottom:64px;max-width:calc(100vw - 24px);z-index:2147483002;padding:6px 12px;border:2px solid #fff;border-radius:14px;font:bold 13px Arial;color:#fff;box-shadow:0 1px 6px #0004;cursor:pointer';document.body.appendChild(el);}
  const net=offNet63();let inner=false,pending=0,errors=0;try{inner=!!net?.isOffline?.();pending=Number(net?.pending?.()||0);errors=Number(net?.errors||0);}catch(e){}
  const off=!navigator.onLine||portalOffline63||inner||Date.now()<clerkDownUntil63;
  let ready='';try{const t=Number(localStorage.getItem('glen_prechargement_v67f_last')||0);if(t&&!pending)ready=' · prêt hors réseau '+new Date(t).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});}catch(e){}
@@ -499,7 +499,7 @@ function offBadge63(){
 async function offJournal63(){
  const net=offNet63();let rows=[],queue=[],st={http:'?',err:''};try{rows=await net?.journal?.()||[];queue=await net?.queue?.()||[];st=await net?.stats?.()||st;}catch(e){}
  let box=document.getElementById('glenJournal63');if(box)box.remove();
- box=document.createElement('div');box.id='glenJournal63';box.style.cssText='position:fixed;right:12px;bottom:104px;z-index:2147483003;width:min(440px,94vw);max-height:60vh;overflow:auto;background:#fff;color:#17324d;border:1px solid #cfdbe6;border-radius:12px;box-shadow:0 6px 24px #0003;padding:14px;font:14px Arial';
+ box=document.createElement('div');box.id='glenJournal63';box.style.cssText='position:fixed;left:12px;bottom:104px;z-index:2147483003;width:min(440px,94vw);max-height:60vh;overflow:auto;background:#fff;color:#17324d;border:1px solid #cfdbe6;border-radius:12px;box-shadow:0 6px 24px #0003;padding:14px;font:14px Arial';
  const esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
  const waiting=queue.filter(q=>q.status!=='erreur'),bad=queue.filter(q=>q.status==='erreur');
  box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>Envois hors réseau</b><button type="button" onclick="this.closest(\'#glenJournal63\').remove()" style="border:0;background:#eef3f8;border-radius:8px;padding:6px 10px;cursor:pointer">Fermer</button></div>'
