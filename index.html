@@ -208,7 +208,7 @@ async function portalSaveVerifiedPassword(email,password){
 }
 async function ensurePortalClerk(){
  if(portalClerkReady)return portalClerkReady;
- portalClerkReady=(async()=>{for(let n=0;!window.Clerk&&n<200;n++)await new Promise(resolve=>setTimeout(resolve,100));if(!window.Clerk)throw new Error('Le service de connexion tarde à répondre. Vérifie Internet puis réessaie.');await window.Clerk.load();return window.Clerk;})();
+ portalClerkReady=(async()=>{for(let n=0;!window.Clerk&&n<200;n++)await new Promise(resolve=>setTimeout(resolve,100));if(!window.Clerk)throw new Error('Le service de connexion tarde à répondre. Vérifie Internet puis réessaie.');await window.Clerk.load({afterSignOutUrl:(location.origin+location.pathname),signInFallbackRedirectUrl:(location.origin+location.pathname),signUpFallbackRedirectUrl:(location.origin+location.pathname)});return window.Clerk;/* etape166 */})();
  try{return await portalClerkReady;}catch(error){portalClerkReady=null;throw error;}
 }
 async function portalClerkToken(forceRefresh=false){
@@ -380,7 +380,7 @@ async function disconnectAccount(){
   try{localStorage.removeItem('glen_offline_session_v63');}catch(e){}
   try{
     const Clerk=await ensurePortalClerk();
-    await Clerk.signOut();
+    await Clerk.signOut({redirectUrl:(location.origin+location.pathname)});/* etape166 */
     localStorage.removeItem('glen_remember_session');
     clearPortalAuthState();
     awaitingPortalLogin=true;
