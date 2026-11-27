@@ -808,4 +808,21 @@ const ofOpenBefore227=ofOpen225;ofOpen225=async function(){await ofOpenBefore227
 
  const css=document.createElement('style');css.textContent='#modal205{border:0;border-radius:16px;padding:24px;width:min(460px,92vw);text-align:center;font-family:Arial,sans-serif;z-index:2147483600}#modal205::backdrop{background:#0009}#modal205 h2{margin:10px 0 8px;color:#17324d}#modal205.ok{background:#ecfdf3}#modal205.warn{background:#fffaeb}.txt205{font-size:15px;line-height:1.5;color:#344054}.txt205 div{margin-top:6px}.btns205{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px}.btns205 button{min-height:44px;padding:10px 16px;border:0;border-radius:10px;background:#1769aa;color:#fff;font-weight:700;cursor:pointer}.btns205 button.secondary{background:#eef3f8;color:#17324d}.big205{font-size:46px}.spin205{width:54px;height:54px;margin:0 auto;border:6px solid #d1e9ff;border-top-color:#1570ef;border-radius:50%;animation:spin205 1s linear infinite}@keyframes spin205{to{transform:rotate(360deg)}}';document.head.append(css);
 })();
+</script><script>/* etape207 (portail) : choix des chantiers du mode terrain retenu DÈS QU'ON COCHE.
+   Avant : le choix n'était gardé qu'après « ⬇️ Télécharger les photos ». En cochant puis en passant directement
+   en mode terrain, l'appli disait « Aucun chantier choisi ». Maintenant chaque case cochée / décochée est retenue,
+   et « Passer en mode terrain » télécharge les photos, quitus et signatures des chantiers cochés. */
+(function(){
+ 'use strict';
+ if(window.terrainSel207)return;window.terrainSel207=true;
+ const KEY='glen_terrain_photos_v100';
+ function save(){const box=document.getElementById('glenPhotoBox100');if(!box)return;
+  const sel={glen:[...box.querySelectorAll('[data-ph100="glen"]:checked')].map(x=>x.value),visites:[...box.querySelectorAll('[data-ph100="visites"]:checked')].map(x=>x.value)};
+  let o=null;try{o=JSON.parse(localStorage.getItem(KEY)||'null');}catch(e){}
+  o=Object.assign({},o||{},{sel});try{localStorage.setItem(KEY,JSON.stringify(o));}catch(e){}
+  let m=document.getElementById('glenPhSel207');if(!m){m=document.createElement('p');m.id='glenPhSel207';m.style.cssText='margin:6px 0 0;font-size:12px;color:#067647;font-weight:700';const go=document.getElementById('glenPhGo100');(go?.parentElement||box).after(m);}
+  const n=sel.glen.length+sel.visites.length;
+  m.textContent=n?'✓ '+n+' choisi(s) : leurs photos, quitus et signatures seront téléchargés en passant en mode terrain (ou tout de suite avec « ⬇️ Télécharger les photos »).':'Aucun chantier coché.';}
+ document.addEventListener('change',e=>{if(e.target&&e.target.matches&&e.target.matches('#glenPhotoBox100 [data-ph100]'))save();},true);
+})();
 </script></body></html>
