@@ -545,7 +545,7 @@ async function offJournal63(){
   +(waiting.length&&navigator.onLine?'<button type="button" id="glenSendNow63" style="border:0;background:#1769aa;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;margin-bottom:8px">📤 Envoyer maintenant</button> ':'')
   +(bad.length?'<button type="button" id="glenDrop63" style="border:0;background:#eef3f8;color:#b42318;border-radius:8px;padding:8px 12px;cursor:pointer;margin:0 0 8px 6px;float:right">🗑️ Supprimer ces envois</button>':'')
   +(bad.length?'<button type="button" id="glenRetry63" style="border:0;background:#b54708;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;margin-bottom:8px">🔁 Réessayer les envois en erreur</button>':'')
-  +(bad.length?'<div style="margin:6px 0"><b>À vérifier</b>'+bad.map(q=>'<div style="border-left:3px solid #b54708;padding:4px 8px;margin:4px 0">'+(()=>{try{if(q.kind==='storage'){const nm=decodeURIComponent(String(q.url||'').split('/').pop()||'fichier');return '📷 <b>Fichier non envoyé</b> : '+esc(nm)+'<br><small>'+esc(q.error)+'</small>';}}catch(e){} /* etape178 */try{if(q.rpc==='housing_date_save_v289'||/housing_date_save_v289/.test(q.table||'')){/* etape167 : détail des rendez-vous à vérifier */const p=typeof q.body==='string'?JSON.parse(q.body||'{}'):(q.body||{});let L=[];try{const cw=document.getElementById('frame')?.contentWindow;L=cw?.eval('typeof logements!=="undefined"?logements:[]')||[];}catch(e){}const l=L.find(x=>String(x.id)===String(p.p_logement));const who=l?[l.module,l.num_log,l.nom].filter(Boolean).join(' · '):String(p.p_logement||'');const fd=d=>{const t=String(d||'').slice(0,10);return /^\d{4}-\d{2}-\d{2}$/.test(t)?t.slice(8,10)+'/'+t.slice(5,7)+'/'+t.slice(0,4):'—';},hm=v=>String(v||'').slice(0,5);return '📅 <b>'+esc(who)+'</b><br>Rendez-vous saisi : <b>'+esc(fd(p.p_date))+'</b>'+(p.p_debut?' de <b>'+esc(hm(p.p_debut))+'</b>':'')+(p.p_fin?' à <b>'+esc(hm(p.p_fin))+'</b>':'')+' · date avant : '+esc(fd(p.p_ancienne_date))+(q.at?'<br><small>saisi le '+esc(new Date(q.at).toLocaleString('fr-FR'))+' · '+esc(q.error)+'</small>':'<br><small>'+esc(q.error)+'</small>');}if(q.rpc==='logement_status_save_v278'){const p=JSON.parse(q.body||'{}');let l=null;try{l=(document.getElementById('frame')?.contentWindow?.logements||[]).find(x=>String(x.id)===String(p.p_id));}catch(e){}const who=l?[l.module,l.num_log,l.nom].filter(Boolean).join(' · '):String(p.p_id||'').slice(0,8);return '🏠 <b>'+esc(who)+'</b> → état « <b>'+esc(p.p_statut)+'</b> »<br><small>'+esc(q.error)+'</small>';}}catch(e){}return esc(q.table||q.kind)+' — '+esc(q.error);})()+'</div>') /* etape127b */.join('')+'</div>':'')
+  +(bad.length?'<div style="margin:6px 0"><b>À vérifier</b>'+bad.map(q=>'<div style="border-left:3px solid #b54708;padding:4px 8px;margin:4px 0">'+(()=>{try{if(q.kind==='storage'){const nm=decodeURIComponent(String(q.url||'').split('/').pop()||'fichier');return '📷 <b>Fichier non envoyé</b> : '+esc(nm)+'<br><small>'+esc(q.error)+'</small>';}}catch(e){} /* etape178 */try{if(q.rpc==='housing_date_save_v289'||/housing_date_save_v289/.test(q.table||'')){/* etape167 : détail des rendez-vous à vérifier */const p=typeof q.body==='string'?JSON.parse(q.body||'{}'):(q.body||{});let L=[];try{const cw=document.getElementById('frame')?.contentWindow;L=cw?.eval('typeof logements!=="undefined"?logements:[]')||[];}catch(e){}const l=L.find(x=>String(x.id)===String(p.p_logement));const who=l?[l.module,l.num_log,l.nom].filter(Boolean).join(' · '):String(p.p_logement||'');const fd=d=>{const t=String(d||'').slice(0,10);return /^\d{4}-\d{2}-\d{2}$/.test(t)?t.slice(8,10)+'/'+t.slice(5,7)+'/'+t.slice(0,4):'—';},hm=v=>String(v||'').slice(0,5);return '📅 <b>'+esc(who)+'</b><br>Rendez-vous saisi : <b>'+esc(fd(p.p_date))+'</b>'+(p.p_debut?' de <b>'+esc(hm(p.p_debut))+'</b>':'')+(p.p_fin?' à <b>'+esc(hm(p.p_fin))+'</b>':'')+' · date avant : '+esc(fd(p.p_ancienne_date))+(q.at?'<br><small>saisi le '+esc(new Date(q.at).toLocaleString('fr-FR'))+' · '+esc(q.error)+'</small>':'<br><small>'+esc(q.error)+'</small>');}if(q.rpc==='logement_status_save_v278'){const p=JSON.parse(q.body||'{}');let l=null;try{l=(document.getElementById('frame')?.contentWindow?.logements||[]).find(x=>String(x.id)===String(p.p_id));}catch(e){}const who=l?[l.module,l.num_log,l.nom].filter(Boolean).join(' · '):String(p.p_id||'').slice(0,8);return '🏠 <b>'+esc(who)+'</b> → état « <b>'+esc(p.p_statut)+'</b> »<br><small>'+esc(q.error)+'</small>';}}catch(e){}return (window.glenOpDetail202?window.glenOpDetail202(q):esc(q.table||q.kind)+' — '+esc(q.error));})() /* etape202 */+'</div>') /* etape127b */.join('')+'</div>':'')
   +(()=>{let dg=[];try{dg=net?.diag?.()||[];}catch(e){}return dg.length?'<div style="margin:6px 0"><b>Diagnostic</b>'+dg.map(x=>'<div style="border-left:3px solid '+(x.t==='manquant'?'#6941c6':x.t==='lent'?'#dc6803':'#b42318')+';padding:4px 8px;margin:4px 0;font-size:12px"><small>'+esc(x.at)+' · '+(x.t==='manquant'?'pas encore gardé sur ce téléphone':x.t)+'</small><br>'+esc(x.m)+'</div>').join('')+'</div>':''})()
   +'<div><b>Journal</b>'+(rows.length?rows.map(r=>'<div style="border-left:3px solid '+(r.type==='conflit'?'#e6a333':r.type==='erreur'?'#b42318':'#1d7a46')+';padding:4px 8px;margin:4px 0"><small>'+esc(new Date(r.at).toLocaleString('fr-FR'))+'</small><br>'+(r.type==='conflit'?'⚠️ '+esc(r.table)+' n° '+esc(r.id)+' · '+esc(r.champ)+' : « '+esc(JSON.stringify(r.remplace))+' » remplacé par « '+esc(JSON.stringify(r.garde))+' »':esc((r.type==='erreur'?'❌ ':'✓ ')+(r.table||'')+' — '+r.message))+'</div>').join(''):'<p>Rien pour l’instant.</p>')+'</div>';
  document.body.appendChild(box);
@@ -682,4 +682,50 @@ const ofOpenBefore227=ofOpen225;ofOpen225=async function(){await ofOpenBefore227
 })();
 </script><script>/* etape140 : « Déconnexion » / « Choisir l’application » : les fiches logement en attente de synchro partent d'abord */
 (function(){let pass=false;document.addEventListener('click',async e=>{const b=e.target&&e.target.closest?e.target.closest('#disconnect,#back'):null;if(!b||pass)return;let s=null;try{s=document.getElementById('frame').contentWindow.sync139;}catch(x){}if(!s||!(typeof s.total==='function'?s.total():Object.keys(s.queue||{}).length))return;e.preventDefault();e.stopImmediatePropagation();const t=b.textContent;b.disabled=true;b.textContent='☁️ Envoi des modifications…';let ok=false;try{ok=await s.now();}catch(x){}b.disabled=false;b.textContent=t;if(ok!==true&&!confirm('Certaines modifications n’ont pas pu être envoyées au serveur. Elles restent gardées sur cet appareil et partiront à la prochaine ouverture.\n\nOK = continuer quand même\nAnnuler = rester'))return;pass=true;try{b.click();}finally{pass=false;}},true);})();
+</script><script>/* etape202 : « À vérifier » — le détail de CHAQUE envoi en erreur (pas seulement rendez-vous et états).
+   Pour chaque envoi : base (GLEN / Multiservice), action (ajout, modification, suppression), table,
+   quelle fiche (filtre), quels champs et quelles valeurs, date de saisie, message du serveur.
+   + bouton « 📋 Copier le détail pour Claude » (ou Partager sur téléphone). */
+(function(){
+ 'use strict';
+ if(window.glenOpDetail202)return;
+ const E=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const BASES={vmhqbywplgahrxozroit:'GLEN',tblktqxjqbeifnzahlyp:'Multiservice'};
+ const ACTIONS={insert:'Ajout',update:'Modification',delete:'Suppression',rpc:'Action',storage:'Fichier'};
+ const parse=v=>{if(v==null)return null;if(typeof v==='object')return v;try{return JSON.parse(v);}catch(e){return null;}};
+ const short=(v,n=80)=>{let t=typeof v==='string'?v:JSON.stringify(v);t=String(t??'');return t.length>n?t.slice(0,n-1)+'…':t;};
+ function info(q){let host='';try{host=new URL(q.url).hostname.split('.')[0];}catch(e){}
+  const base=BASES[host]||host||'?';const kind=q.kind||(q.method==='POST'?'insert':q.method==='PATCH'?'update':q.method==='DELETE'?'delete':'');
+  let filtres=Array.isArray(q.filters)?q.filters.map(f=>f[0]+' '+String(f[1]).replace(/^eq\./,'= ').replace(/^is\./,'est ').replace(/^in\./,'parmi ')):[];
+  if(!filtres.length){try{const u=new URL(q.url);u.searchParams.forEach((v,k)=>{if(k!=='select'&&k!=='on_conflict'&&k!=='columns')filtres.push(k+' '+v.replace(/^eq\./,'= '));});}catch(e){}}
+  let champs={};const p=q.patch||(Array.isArray(q.rows)&&q.rows[0])||parse(q.body);if(p&&typeof p==='object'&&!Array.isArray(p))champs=p;
+  return {base,action:ACTIONS[kind]||q.method||kind||'?',table:q.table||q.kind||'',filtres,champs,lignes:Array.isArray(q.rows)?q.rows.length:null,
+   saisi:q.at||'',erreur:q.error||'',methode:q.method||'',adresse:(()=>{try{const u=new URL(q.url);return u.pathname.replace('/rest/v1/','')+(u.search?decodeURIComponent(u.search):'');}catch(e){return '';}})()};}
+ window.glenOpDetail202=function(q){const d=info(q);
+  const keys=Object.keys(d.champs);
+  return '🧾 <b>'+E(d.action)+'</b> · '+E(d.table)+' · base <b>'+E(d.base)+'</b>'
+   +(d.filtres.length?'<br><small>fiche : '+E(d.filtres.join(' et '))+'</small>':'')
+   +(keys.length?'<br><small>champs : '+keys.slice(0,8).map(k=>E(k)+' = « '+E(short(d.champs[k],40))+' »').join(' · ')+(keys.length>8?' · …':'')+'</small>':'')
+   +(d.lignes>1?'<br><small>'+d.lignes+' lignes</small>':'')
+   +'<br><small>'+(d.saisi?'saisi le '+E(new Date(d.saisi).toLocaleString('fr-FR'))+' · ':'')+E(d.erreur)+'</small>';};
+ window.glenOpReport202=function(list){const rows=(list||[]).map(info);
+  const groups={};rows.forEach(r=>{const k=r.base+' · '+r.action+' · '+r.table+' · '+r.erreur.replace(/"[^"]*"/g,'"…"');groups[k]=(groups[k]||0)+1;});
+  return 'GLEN — envois à vérifier ('+rows.length+') — '+new Date().toLocaleString('fr-FR')+'\nAppareil : '+navigator.userAgent+'\n\nRÉSUMÉ\n'
+   +Object.entries(groups).map(([k,n])=>n+' × '+k).join('\n')
+   +'\n\nDÉTAIL\n'+rows.slice(0,40).map((r,i)=>(i+1)+'. '+r.action+' '+r.table+' (base '+r.base+', '+r.methode+')\n   adresse : '+short(r.adresse,300)+'\n   champs : '+short(r.champs,300)+'\n   saisi le : '+(r.saisi?new Date(r.saisi).toLocaleString('fr-FR'):'—')+'\n   erreur : '+r.erreur).join('\n')
+   +(rows.length>40?'\n… et '+(rows.length-40)+' autre(s)':'');};
+ async function copy(btn){let list=[];try{const n=typeof offNet63==='function'?offNet63():window.glenNet63;list=((await n?.queue?.())||[]).filter(o=>o.status==='erreur');}catch(e){}
+  const text=window.glenOpReport202(list);const old=btn.textContent;
+  try{if(navigator.share&&/Android|iPhone|iPad/i.test(navigator.userAgent)){await navigator.share({title:'Envois à vérifier',text});btn.textContent='✓ Partagé';}
+   else{await navigator.clipboard.writeText(text);btn.textContent='✓ Copié : colle-le dans la conversation avec Claude';}}
+  catch(e){if(e&&e.name==='AbortError'){btn.textContent=old;return;}
+   const ta=document.createElement('textarea');ta.value=text;ta.readOnly=true;ta.style.cssText='width:100%;height:160px;font-size:11px;margin-top:6px';btn.after(ta);ta.focus();ta.select();btn.textContent='Sélectionne le texte ci-dessous et copie-le';}
+  setTimeout(()=>{if(btn.isConnected)btn.textContent=old;},6000);}
+ /* bouton ajouté sous « À vérifier » à chaque affichage du panneau */
+ function addButton(){const retry=document.getElementById('glenRetry63');if(!retry||document.getElementById('glenCopy202'))return;
+  const b=document.createElement('button');b.type='button';b.id='glenCopy202';b.textContent='📋 Copier le détail pour Claude';
+  b.style.cssText='border:0;background:#eef3f8;color:#17324d;border-radius:8px;padding:8px 12px;cursor:pointer;margin:0 0 8px 6px;font-weight:700';
+  b.onclick=()=>copy(b);retry.after(b);}
+ new MutationObserver(()=>{if(document.getElementById('glenRetry63')&&!document.getElementById('glenCopy202'))addButton();}).observe(document.documentElement,{childList:true,subtree:true});
+})();
 </script></body></html>
